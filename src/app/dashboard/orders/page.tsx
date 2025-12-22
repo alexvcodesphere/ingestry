@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+/**
+ * Orders List Page
+ * Displays all draft orders with status, filtering, and navigation to detail views.
+ */
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -13,388 +17,233 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { ProcessingProgress, type ProcessingStep } from "@/components/processing-progress";
+import type { DraftOrder, DraftOrderStatus } from "@/types";
 
-type ExtractionMethod = "azure" | "gpt";
-
-interface GPTProduct {
-    name: string;
-    color: string;
-    size: string;
-    price: string;
-    quantity: string;
-    ean: string;
-    sku: string;
-    articleNumber: string;
-    styleCode: string;
-    designerCode: string;
-    brand: string;
-}
-
-interface ExtractionResult {
-    method: ExtractionMethod;
-    // Azure results
-    tables?: { rows: string[][]; rowCount: number; columnCount: number }[];
-    pages?: number;
-    // GPT results
-    products?: GPTProduct[];
-    rawResponse?: string;
-}
+const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
+    processing: {
+        label: "Processing",
+        className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+    },
+    pending_review: {
+        label: "Pending Review",
+        className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    },
+    approved: {
+        label: "Approved",
+        className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+    },
+    exporting: {
+        label: "Exporting",
+        className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+    },
+    exported: {
+        label: "Exported",
+        className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+    },
+    failed: {
+        label: "Failed",
+        className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    },
+};
 
 export default function OrdersPage() {
-    const [file, setFile] = useState<File | null>(null);
-    const [catalogue, setCatalogue] = useState("");
-    const [method, setMethod] = useState<ExtractionMethod>("azure");
-    const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<ExtractionResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [elapsedTime, setElapsedTime] = useState(0);
-    const [steps, setSteps] = useState<ProcessingStep[]>([]);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const [orders, setOrders] = useState<DraftOrder[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState<DraftOrderStatus | "all">("all");
 
-    useEffect(() => {
-        if (isLoading) {
-            const startTime = Date.now();
-            timerRef.current = setInterval(() => {
-                setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-            }, 100);
-        } else {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-        }
-        return () => {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-            }
-        };
-    }, [isLoading]);
-
-    const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile?.type === "application/pdf") {
-            setFile(droppedFile);
-            setError(null);
-        } else {
-            setError("Please drop a PDF file");
-        }
-    }, []);
-
-    const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0];
-        if (selectedFile) {
-            setFile(selectedFile);
-            setError(null);
-        }
-    }, []);
-
-    const updateStep = (name: string, status: ProcessingStep["status"], message?: string) => {
-        setSteps((prev) => {
-            const existing = prev.find((s) => s.name === name);
-            if (existing) {
-                return prev.map((s) => (s.name === name ? { ...s, status, message } : s));
-            }
-            return [...prev, { name, status, message }];
-        });
-    };
-
-    const handleSubmit = async () => {
-        if (!file) {
-            setError("Please select a PDF file");
-            return;
-        }
-
+    const fetchOrders = useCallback(async () => {
         setIsLoading(true);
-        setError(null);
-        setResult(null);
-        setElapsedTime(0);
-        setSteps([]);
-
-        updateStep("Uploading file", "running");
-
         try {
-            const formData = new FormData();
-            formData.append("pdf", file);
-            formData.append("catalogue", catalogue);
-            formData.append("method", method);
-
-            updateStep("Uploading file", "done");
-            updateStep(`Extracting with ${method.toUpperCase()}`, "running");
-
-            const response = await fetch("/api/documents/analyze", {
-                method: "POST",
-                body: formData,
-            });
-
-            updateStep(`Extracting with ${method.toUpperCase()}`, "done");
-            updateStep("Processing response", "running");
-
-            const data = await response.json();
-
-            if (data.success) {
-                console.log("[Orders] API response success:", data);
-                console.log("[Orders] Setting result to:", data.data);
-                updateStep("Processing response", "done");
-                const resultInfo = method === "gpt"
-                    ? `Found ${data.data.products?.length || 0} products`
-                    : `Found ${data.data.tables?.length || 0} tables`;
-                updateStep("Complete", "done", resultInfo);
-                setResult(data.data);
-            } else {
-                updateStep("Processing response", "error", data.error);
-                setError(data.error || "Failed to process document");
+            const params = new URLSearchParams();
+            if (statusFilter !== "all") {
+                params.set("status", statusFilter);
             }
-        } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : "Unknown error";
-            updateStep("Processing response", "error", errorMsg);
-            setError(errorMsg);
+            params.set("limit", "50");
+
+            const response = await fetch(`/api/draft-orders?${params}`);
+            const result = await response.json();
+
+            if (result.success) {
+                setOrders(result.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch orders:", error);
         } finally {
             setIsLoading(false);
         }
+    }, [statusFilter]);
+
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
+
+    const handleDelete = async (orderId: string) => {
+        if (!confirm("Delete this order? This cannot be undone.")) return;
+        try {
+            const response = await fetch(`/api/draft-orders/${orderId}`, {
+                method: "DELETE",
+            });
+            if (response.ok) {
+                await fetchOrders();
+            } else {
+                alert("Failed to delete order");
+            }
+        } catch (error) {
+            console.error("Delete error:", error);
+            alert("Failed to delete order");
+        }
     };
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    const getStatusBadge = (status: DraftOrderStatus) => {
+        const config = statusConfig[status] || statusConfig.processing;
+        return (
+            <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}
+            >
+                {config.label}
+            </span>
+        );
     };
 
-    const renderGPTResults = (products: GPTProduct[]) => (
-        <div className="max-h-96 overflow-auto rounded-lg border">
-            <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                    <TableRow>
-                        <TableHead>Brand</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Color</TableHead>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>EAN</TableHead>
-                        <TableHead>Article #</TableHead>
-                        <TableHead>Style Code</TableHead>
-                        <TableHead>Designer Code</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {products.map((product, idx) => (
-                        <TableRow key={idx}>
-                            <TableCell className="text-xs">{product.brand || "-"}</TableCell>
-                            <TableCell className="font-medium">{product.name}</TableCell>
-                            <TableCell>{product.color}</TableCell>
-                            <TableCell>{product.size}</TableCell>
-                            <TableCell>{product.price}</TableCell>
-                            <TableCell>{product.quantity}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{product.sku || "-"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{product.ean || "-"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{product.articleNumber || "-"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{product.styleCode || "-"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{product.designerCode || "-"}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </div>
-    );
+    const getShopSystemBadge = (system: string) => {
+        const systemLabels: Record<string, string> = {
+            shopware: "Shopware",
+            xentral: "Xentral",
+            shopify: "Shopify",
+        };
+        return (
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                {systemLabels[system] || system}
+            </span>
+        );
+    };
 
-    const renderAzureResults = (tables: { rows: string[][]; rowCount: number; columnCount: number }[]) => (
-        <div className="space-y-4">
-            {tables.map((table, tableIdx) => (
-                <div key={tableIdx} className="rounded-lg border">
-                    <div className="bg-muted px-3 py-2 text-sm font-medium">
-                        Table {tableIdx + 1} ({table.rowCount} rows × {table.columnCount} cols)
-                    </div>
-                    <div className="max-h-64 overflow-auto">
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Orders</h2>
+                    <p className="text-muted-foreground">
+                        Manage your order processing pipeline
+                    </p>
+                </div>
+                <Link href="/dashboard/orders/new">
+                    <Button>
+                        <span className="mr-2">+</span>
+                        New Order
+                    </Button>
+                </Link>
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Filter:</span>
+                <Button
+                    variant={statusFilter === "all" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStatusFilter("all")}
+                >
+                    All
+                </Button>
+                <Button
+                    variant={statusFilter === "pending_review" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStatusFilter("pending_review")}
+                >
+                    Pending Review
+                </Button>
+                <Button
+                    variant={statusFilter === "approved" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStatusFilter("approved")}
+                >
+                    Approved
+                </Button>
+                <Button
+                    variant={statusFilter === "exported" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStatusFilter("exported")}
+                >
+                    Exported
+                </Button>
+            </div>
+
+            {/* Orders Table */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Recent Orders</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {orders.length === 0 ? (
+                        <div className="text-center py-12">
+                            <p className="text-muted-foreground mb-4">
+                                No orders found. Create your first order to get started.
+                            </p>
+                            <Link href="/dashboard/orders/new">
+                                <Button>Create Order</Button>
+                            </Link>
+                        </div>
+                    ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    {table.rows[0]?.map((cell, cellIdx) => (
-                                        <TableHead key={cellIdx} className="whitespace-nowrap">
-                                            {cell || `Col ${cellIdx + 1}`}
-                                        </TableHead>
-                                    ))}
+                                    <TableHead>Order ID</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Shop System</TableHead>
+                                    <TableHead>Brand</TableHead>
+                                    <TableHead>Created</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {table.rows.slice(1, 11).map((row, rowIdx) => (
-                                    <TableRow key={rowIdx}>
-                                        {row.map((cell, cellIdx) => (
-                                            <TableCell key={cellIdx} className="whitespace-nowrap">
-                                                {cell}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                ))}
-                                {table.rows.length > 11 && (
-                                    <TableRow>
-                                        <TableCell colSpan={table.rows[0]?.length || 1} className="text-center text-muted-foreground">
-                                            ... and {table.rows.length - 11} more rows
+                                {orders.map((order) => (
+                                    <TableRow key={order.id}>
+                                        <TableCell className="font-mono text-sm">
+                                            {order.id.slice(0, 8)}...
+                                        </TableCell>
+                                        <TableCell>
+                                            {getStatusBadge(order.status)}
+                                        </TableCell>
+                                        <TableCell>
+                                            {getShopSystemBadge(order.shop_system)}
+                                        </TableCell>
+                                        <TableCell>
+                                            {(order.brand as { brand_name?: string })?.brand_name || "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {new Date(order.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell className="text-right space-x-1">
+                                            <Link href={`/dashboard/orders/${order.id}`}>
+                                                <Button variant="outline" size="sm">
+                                                    View
+                                                </Button>
+                                            </Link>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-red-500 hover:text-red-700"
+                                                onClick={() => handleDelete(order.id)}
+                                            >
+                                                Delete
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
-                                )}
+                                ))}
                             </TableBody>
                         </Table>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-
-    return (
-        <div className="space-y-8">
-            {/* Header */}
-            <div>
-                <h2 className="text-3xl font-bold tracking-tight">Order Processing</h2>
-                <p className="text-muted-foreground">
-                    Upload order confirmation PDFs to extract product data
-                </p>
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Upload PDF</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Extraction Method Switcher */}
-                    <div className="space-y-2">
-                        <Label>Extraction Method</Label>
-                        <div className="flex gap-2">
-                            <Button
-                                type="button"
-                                variant={method === "azure" ? "default" : "outline"}
-                                onClick={() => setMethod("azure")}
-                                className="flex-1"
-                            >
-                                🔷 Azure Document Intelligence
-                            </Button>
-                            <Button
-                                type="button"
-                                variant={method === "gpt" ? "default" : "outline"}
-                                onClick={() => setMethod("gpt")}
-                                className="flex-1"
-                            >
-                                🤖 GPT-4 Extraction
-                            </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            {method === "azure"
-                                ? "Uses Azure's prebuilt document models. Best for structured tables."
-                                : "Uses GPT-4 for intelligent extraction. Better for complex layouts but costs per API call."}
-                        </p>
-                    </div>
-
-                    <div
-                        onDrop={handleFileDrop}
-                        onDragOver={(e) => e.preventDefault()}
-                        className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 hover:border-muted-foreground/50"
-                    >
-                        {file ? (
-                            <div className="text-center">
-                                <p className="font-medium">{file.name}</p>
-                                <p className="text-sm text-muted-foreground">
-                                    {(file.size / 1024).toFixed(1)} KB
-                                </p>
-                                <Button variant="ghost" size="sm" onClick={() => setFile(null)} className="mt-2">
-                                    Remove
-                                </Button>
-                            </div>
-                        ) : (
-                            <div className="text-center">
-                                <p className="text-muted-foreground">Drag and drop a PDF here, or click to select</p>
-                                <Input type="file" accept=".pdf" onChange={handleFileSelect} className="mt-4 max-w-xs" />
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="catalogue">Catalogue Name (optional)</Label>
-                        <Input
-                            id="catalogue"
-                            value={catalogue}
-                            onChange={(e) => setCatalogue(e.target.value)}
-                            placeholder="e.g., Acne Studios"
-                        />
-                    </div>
-
-                    {error && <p className="text-sm text-red-500">{error}</p>}
-
-                    <Button onClick={handleSubmit} disabled={!file || isLoading}>
-                        {isLoading ? "Processing..." : `Extract with ${method.toUpperCase()}`}
-                    </Button>
+                    )}
                 </CardContent>
             </Card>
-
-            {/* Processing Status */}
-            {(isLoading || steps.length > 0) && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Processing Status</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <ProcessingProgress
-                            steps={steps}
-                            elapsedTime={elapsedTime}
-                            isLoading={isLoading}
-                        />
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Results */}
-            {result && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                            <span>Extraction Results ({result.method?.toUpperCase()})</span>
-                            <span className="text-sm font-normal text-muted-foreground">
-                                {result.method === "gpt"
-                                    ? `${result.products?.length || 0} products`
-                                    : `${result.tables?.length || 0} tables, ${result.pages || 0} pages`}
-                            </span>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {(() => {
-                            console.log("[Orders] Rendering result:", result);
-                            console.log("[Orders] method:", result.method, "products:", result.products?.length, "tables:", result.tables?.length);
-
-                            if (result.method === "gpt" && result.products && result.products.length > 0) {
-                                return renderGPTResults(result.products);
-                            } else if (result.tables && result.tables.length > 0) {
-                                return renderAzureResults(result.tables);
-                            } else {
-                                return <p className="text-muted-foreground">No data extracted</p>;
-                            }
-                        })()}
-
-                        {/* Raw Response Section */}
-                        {result.method === "gpt" && (
-                            <div className="mt-6 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <Label>Raw JSON Response</Label>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            const jsonText = result.rawResponse || JSON.stringify(result.products, null, 2);
-                                            navigator.clipboard.writeText(jsonText);
-                                            alert("Copied to clipboard!");
-                                        }}
-                                    >
-                                        📋 Copy JSON
-                                    </Button>
-                                </div>
-                                <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-4 text-xs">
-                                    {result.rawResponse || JSON.stringify(result.products, null, 2)}
-                                </pre>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
         </div>
     );
 }

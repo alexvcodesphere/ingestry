@@ -80,3 +80,200 @@ export interface ApiResponse<T> {
     data?: T;
     error?: string;
 }
+
+// ============================================
+// Shop System Types
+// ============================================
+
+export type ShopSystem = 'shopify' | 'shopware' | 'xentral';
+
+export interface MappingTemplate {
+    id: string;
+    name: string;
+    shop_system: ShopSystem;
+    category_rules: CategoryRule[];
+    field_mappings: Record<string, string>;
+    created_at?: string;
+}
+
+export interface CategoryRule {
+    keywords: string[];
+    category: string;
+    gender?: string;
+}
+
+// ============================================
+// Draft Order Types (Processing Pipeline)
+// ============================================
+
+export type DraftOrderStatus =
+    | 'processing'      // GPT extraction in progress
+    | 'pending_review'  // Ready for human validation
+    | 'approved'        // All items approved
+    | 'exporting'       // Pushing to shop system
+    | 'exported'        // Successfully exported
+    | 'failed';         // Export failed
+
+export type LineItemStatus =
+    | 'pending'     // Awaiting review
+    | 'validated'   // Auto-validated, no issues
+    | 'error'       // Has validation errors
+    | 'approved';   // Manually approved
+
+export interface DraftOrder {
+    id: string;
+    status: DraftOrderStatus;
+    shop_system: ShopSystem;
+    template_id?: string;
+    brand_id?: string;
+    source_file_name?: string;
+    source_job_id?: string;
+    user_id: string;
+    metadata: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+    // Joined relations
+    line_items?: DraftLineItem[];
+    brand?: Supplier;
+}
+
+export interface DraftLineItem {
+    id: string;
+    draft_order_id: string;
+    line_number: number;
+    status: LineItemStatus;
+    raw_data: RawExtractedProduct;
+    normalized_data?: NormalizedProduct;
+    validation_errors: ValidationError[];
+    user_modified: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ValidationError {
+    field: string;
+    message: string;
+    severity: 'warning' | 'error';
+}
+
+// ============================================
+// Product Normalization Types
+// ============================================
+
+/** Raw product data from GPT Vision extraction */
+export interface RawExtractedProduct {
+    name: string;
+    color: string;
+    size: string;
+    price: string;
+    quantity: string;
+    ean: string;
+    sku: string;
+    articleNumber: string;
+    styleCode: string;
+    designerCode: string;
+    brand: string;
+}
+
+/** Normalized product ready for shop export */
+export interface NormalizedProduct {
+    // Core identifiers
+    sku: string;
+    ean?: string;
+    article_number?: string;
+    style_code?: string;
+    designer_code?: string;
+
+    // Product info
+    name: string;
+    brand: string;
+    supplier?: string;
+
+    // Attributes
+    color: string;
+    color_normalized?: string;
+    size: string;
+    size_normalized?: string;
+
+    // Pricing
+    price: number;
+    currency: string;
+
+    // Quantity
+    quantity: number;
+
+    // Enriched data
+    category?: string;
+    gender?: string;
+    season?: string;
+
+    // Match confidence from catalogue
+    match_confidence?: number;
+    match_type?: 'ean' | 'article' | 'style_color_size' | 'fuzzy' | 'none';
+}
+
+// ============================================
+// Processing Context
+// ============================================
+
+export interface ProcessingContext {
+    shop_system: ShopSystem;
+    template?: MappingTemplate;
+    brand?: Supplier;
+    supplier_name?: string;
+    user_id: string;
+    source_job_id?: string;
+    extraction_profile_id?: string;
+    sku_template_id?: string;
+    options?: {
+        auto_generate_sku: boolean;
+        normalize_colors: boolean;
+        match_catalogue: boolean;
+    };
+}
+
+// ============================================
+// Configuration Types
+// ============================================
+
+export interface FieldDefinition {
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'currency' | 'enum';
+    required: boolean;
+    instructions?: string;
+    enumValues?: string[];
+    defaultValue?: string;
+}
+
+export interface ExtractionProfile {
+    id: string;
+    name: string;
+    description?: string;
+    fields: FieldDefinition[];
+    prompt_additions?: string;
+    is_default: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface SkuTemplate {
+    id: string;
+    name: string;
+    template: string;
+    description?: string;
+    is_default: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface CodeLookup {
+    id: string;
+    type: 'brand' | 'category' | 'colour' | 'gender' | 'season_type';
+    name: string;
+    code: string;
+    aliases?: string[];
+    sort_order?: number;
+    created_at?: string;
+}
+
