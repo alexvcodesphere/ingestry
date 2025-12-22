@@ -53,7 +53,7 @@ export class ShopwareAdapter implements ShopAdapter {
             } catch (error) {
                 failed++;
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: 'error',
                     message: error instanceof Error ? error.message : 'Unknown error',
                 });
@@ -77,14 +77,14 @@ export class ShopwareAdapter implements ShopAdapter {
         if (response.ok) {
             const data = await response.json();
             return {
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: 'success',
                 externalId: data.data?.id || data.id,
             };
         } else {
             const error = await response.text();
             return {
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: 'error',
                 message: `HTTP ${response.status}: ${error}`,
             };
@@ -93,25 +93,25 @@ export class ShopwareAdapter implements ShopAdapter {
 
     private mapToShopwareFormat(product: NormalizedProduct): Record<string, unknown> {
         return {
-            productNumber: product.sku,
-            name: product.name,
-            stock: product.quantity,
+            productNumber: product['sku'],
+            name: product['name'],
+            stock: product['quantity'],
             price: [{
-                currencyId: this.getCurrencyId(product.currency),
-                gross: product.price,
-                net: product.price / 1.19, // Assuming 19% VAT
+                currencyId: this.getCurrencyId(String(product['currency'] || 'EUR')),
+                gross: Number(product['price'] || 0),
+                net: Number(product['price'] || 0) / 1.19, // Assuming 19% VAT
                 linked: true,
             }],
             manufacturer: {
-                name: product.brand,
+                name: product['brand'],
             },
-            categories: product.category ? [{
-                name: product.category,
+            categories: product['category'] ? [{
+                name: product['category'],
             }] : undefined,
             customFields: {
-                ean: product.ean,
-                color: product.color_normalized || product.color,
-                size: product.size_normalized || product.size,
+                ean: product['ean'],
+                color: product['color_normalized'] || product['color'],
+                size: product['size_normalized'] || product['size'],
             },
         };
     }
@@ -133,7 +133,7 @@ export class ShopwareAdapter implements ShopAdapter {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const results: UploadResult[] = products.map((p, index) => ({
-            sku: p.sku,
+            sku: String(p['sku'] || ''),
             status: 'success' as const,
             externalId: `SW-${String(index + 1).padStart(8, '0')}`,
             message: 'Mock upload successful',
@@ -193,7 +193,7 @@ export class ShopwareAdapter implements ShopAdapter {
             console.log(`[MOCK Shopware] Updating product ${externalId}`, updates);
             await new Promise(resolve => setTimeout(resolve, 200));
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'success',
                 externalId,
                 message: 'Mock update successful',
@@ -212,13 +212,13 @@ export class ShopwareAdapter implements ShopAdapter {
 
         if (response.ok) {
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'success',
                 externalId,
             };
         } else {
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'error',
                 message: `HTTP ${response.status}`,
             };

@@ -16,7 +16,7 @@ export interface SkuComponents {
     season: string;
     category: string;
     gender: string;
-    colour: string;
+    color: string;
     productNumber: number;
     size?: string;
     custom?: Record<string, string>; // Custom normalized values
@@ -25,7 +25,7 @@ export interface SkuComponents {
 export interface SkuMappings {
     brandCode: string;
     categoryCode: string;
-    colourCode: string;
+    colorCode: string;
 }
 
 // Cache for code lookups
@@ -96,21 +96,21 @@ export async function getCategoryCode(categoryName: string): Promise<string> {
 }
 
 /**
- * Get colour code from code_lookups table
+ * Get color code from code_lookups table
  */
-export async function getColourCode(colourName: string): Promise<string> {
+export async function getColorCode(colorName: string): Promise<string> {
     const lookups = await getCachedLookups();
-    const colourLookup = lookups.get('colour');
+    const colorLookup = lookups.get('color');
 
-    if (!colourLookup || !colourName) return '00';
+    if (!colorLookup || !colorName) return '00';
 
-    const normalized = colourName.toLowerCase().trim();
+    const normalized = colorName.toLowerCase().trim();
 
-    if (colourLookup.has(normalized)) {
-        return colourLookup.get(normalized)!;
+    if (colorLookup.has(normalized)) {
+        return colorLookup.get(normalized)!;
     }
 
-    for (const [key, code] of colourLookup) {
+    for (const [key, code] of colorLookup) {
         if (normalized.includes(key) || key.includes(normalized)) {
             return code;
         }
@@ -130,7 +130,7 @@ export async function generateSku(
     const context: TemplateContext = {
         brand: components.brand,
         category: components.category,
-        colour: components.colour,
+        color: components.color,
         gender: components.gender,
         season: components.season,
         size: components.size,
@@ -150,13 +150,13 @@ export async function generateSkuForProduct(
     _context?: ProcessingContext
 ): Promise<string> {
     const templateContext: TemplateContext = {
-        brand: product.brand,
-        category: product.category,
-        colour: product.color_normalized || product.color,
-        gender: product.gender,
-        season: product.season,
-        size: product.size_normalized || product.size,
-        ean: product.ean,
+        brand: product['brand'] as string | undefined,
+        category: product['category'] as string | undefined,
+        color: (product['color_normalized'] || product['color']) as string | undefined,
+        gender: product['gender'] as string | undefined,
+        season: product['season'] as string | undefined,
+        size: (product['size_normalized'] || product['size']) as string | undefined,
+        ean: product['ean'] as string | undefined,
         sequence,
     };
 

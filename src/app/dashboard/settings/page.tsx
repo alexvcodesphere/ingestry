@@ -18,7 +18,7 @@ const configSections = [
     },
     {
         title: "Code Lookups",
-        description: "Manage brand, category, and colour code mappings",
+        description: "Manage brand, category, and color code mappings",
         href: "/dashboard/settings/lookups",
         icon: "📋",
     },
@@ -117,9 +117,9 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center justify-between p-3 border rounded-lg">
                             <div>
-                                <p className="font-medium">Normalize Colours</p>
+                                <p className="font-medium">Normalize Colors</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Map colour names to canonical values
+                                    Map color names to canonical values
                                 </p>
                             </div>
                             <span className="text-sm text-muted-foreground">Enabled</span>

@@ -13,6 +13,8 @@ interface FieldConfig {
     label: string;
     required?: boolean;
     normalize_with?: string;
+    use_template?: boolean;   // if true, value is computed from template
+    template?: string;        // template string e.g. "{brand} - {name}"
 }
 
 /**
@@ -23,8 +25,6 @@ export interface ProcessingProfile {
     tenant_id: string;
     name: string;
     fields: FieldConfig[];
-    sku_template?: string;
-    generate_sku?: boolean;
     is_default: boolean;
 }
 

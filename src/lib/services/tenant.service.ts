@@ -32,6 +32,21 @@ export interface LookupType {
     sort_order: number;
 }
 
+/** New unified field definition (replaces lookup_types) */
+export interface FieldDefinition {
+    id: string;
+    tenant_id: string;
+    key: string;
+    label: string;
+    source: 'extracted' | 'computed';
+    has_code_lookup: boolean;
+    template?: string;
+    description?: string;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
 /**
  * Get the current user's tenant ID
  * Returns null if user is not a member of any tenant
@@ -92,6 +107,25 @@ export async function getLookupTypes(): Promise<LookupType[]> {
 
     if (error || !data) return [];
     return data as LookupType[];
+}
+
+/**
+ * Get all field definitions for the current tenant (new unified system)
+ */
+export async function getFieldDefinitions(): Promise<FieldDefinition[]> {
+    const supabase = await createClient();
+    const tenantId = await getCurrentTenantId();
+
+    if (!tenantId) return [];
+
+    const { data, error } = await supabase
+        .from('field_definitions')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('sort_order');
+
+    if (error || !data) return [];
+    return data as FieldDefinition[];
 }
 
 /**
@@ -161,26 +195,11 @@ export async function deleteLookupType(id: string): Promise<boolean> {
 
 /**
  * Seed default lookup types for a new tenant
+ * NOTE: No default types are seeded - users create all lookup types themselves.
+ * This supports productization where each tenant has their own custom setup.
  */
-export async function seedLookupTypesForTenant(tenantId: string): Promise<void> {
-    const supabase = await createClient();
-
-    const defaultTypes = [
-        { slug: 'brand', label: 'Brands', description: 'Brand/supplier mappings', variable_name: 'brand', sort_order: 1 },
-        { slug: 'category', label: 'Categories', description: 'Category codes for SKU', variable_name: 'category', sort_order: 2 },
-        { slug: 'colour', label: 'Colours', description: 'Colour codes for SKU', variable_name: 'colour', sort_order: 3 },
-        { slug: 'gender', label: 'Genders', description: 'Gender codes', variable_name: 'gender', sort_order: 4 },
-        { slug: 'season_type', label: 'Seasons', description: 'Season type codes', variable_name: 'season', sort_order: 5 },
-    ];
-
-    for (const type of defaultTypes) {
-        await supabase
-            .from('lookup_types')
-            .insert({
-                tenant_id: tenantId,
-                ...type,
-                is_system: true,
-            })
-            .select();
-    }
+export async function seedLookupTypesForTenant(_tenantId: string): Promise<void> {
+    // No default lookup types - users create their own
+    // This function is kept for backwards compatibility but does nothing
 }
+

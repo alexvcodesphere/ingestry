@@ -28,8 +28,8 @@ const TEMPLATE_VARIABLES = [
     { var: "{gender}", desc: "Gender code (M/W/U)" },
     { var: "{category}", desc: "Category name" },
     { var: "{category:2}", desc: "Category code (2 digits)" },
-    { var: "{colour}", desc: "Colour name" },
-    { var: "{colour:2}", desc: "Colour code (2 digits)" },
+    { var: "{color}", desc: "Color name" },
+    { var: "{color:2}", desc: "Color code (2 digits)" },
     { var: "{size}", desc: "Size value" },
     { var: "{sequence}", desc: "Sequence number" },
     { var: "{sequence:3}", desc: "Sequence (3 digits)" },
@@ -77,8 +77,8 @@ export default function SkuTemplatesPage() {
                 .replace("{gender}", "W")
                 .replace("{category:2}", "01")
                 .replace("{category}", "Outerwear")
-                .replace("{colour:2}", "01")
-                .replace("{colour}", "Black")
+                .replace("{color:2}", "01")
+                .replace("{color}", "Black")
                 .replace("{size}", "M")
                 .replace("{sequence:3}", "001")
                 .replace("{sequence}", "1")

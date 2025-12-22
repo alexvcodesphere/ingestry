@@ -33,7 +33,7 @@ export class ShopifyAdapter implements ShopAdapter {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const results: UploadResult[] = products.map((p, index) => ({
-            sku: p.sku,
+            sku: String(p['sku'] || ''),
             status: 'success' as const,
             externalId: `gid://shopify/Product/${1000000000 + index}`,
             message: 'Mock upload successful',
@@ -63,7 +63,7 @@ export class ShopifyAdapter implements ShopAdapter {
         await new Promise(resolve => setTimeout(resolve, 200));
 
         return {
-            sku: updates.sku || externalId,
+            sku: String(updates['sku'] || externalId),
             status: 'success',
             externalId,
             message: 'Mock update successful',

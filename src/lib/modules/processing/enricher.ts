@@ -23,13 +23,13 @@ export function enrichProduct(
     }
 
     // Fallback category detection if no template match
-    if (!enriched.category) {
-        enriched.category = detectCategory(product.name);
+    if (!enriched['category']) {
+        enriched['category'] = detectCategory(String(product['name'] || ''));
     }
 
     // Refine gender from category if still unisex
-    if (enriched.gender === 'unisex' && enriched.category) {
-        enriched.gender = detectGenderFromCategory(enriched.category) || enriched.gender;
+    if (enriched['gender'] === 'unisex' && enriched['category']) {
+        enriched['gender'] = detectGenderFromCategory(String(enriched['category'])) || enriched['gender'];
     }
 
     return enriched;
@@ -52,7 +52,7 @@ function matchCategory(
     product: NormalizedProduct,
     rules: CategoryRule[]
 ): { category?: string; gender?: string } {
-    const searchText = `${product.name} ${product.color} ${product.brand}`.toLowerCase();
+    const searchText = `${product['name'] || ''} ${product['color'] || ''} ${product['brand'] || ''}`.toLowerCase();
 
     for (const rule of rules) {
         const matches = rule.keywords.some(keyword =>
@@ -161,22 +161,22 @@ export function validateProduct(product: NormalizedProduct): string[] {
     const productRecord = product as unknown as Record<string, unknown>;
 
     // Only validate SKU if it exists as a field (i.e., profile has generate_sku enabled)
-    if ('sku' in productRecord && !product.sku) {
+    if ('sku' in productRecord && !product['sku']) {
         errors.push('SKU is required');
     }
 
     // Only validate name if it exists as a field
-    if ('name' in productRecord && !product.name) {
+    if ('name' in productRecord && !product['name']) {
         errors.push('Name is required');
     }
 
     // Only validate price if it exists as a field
-    if ('price' in productRecord && product.price <= 0) {
+    if ('price' in productRecord && Number(product['price'] || 0) <= 0) {
         errors.push('Price must be greater than 0');
     }
 
     // Only validate quantity if it exists as a field
-    if ('quantity' in productRecord && product.quantity <= 0) {
+    if ('quantity' in productRecord && Number(product['quantity'] || 0) <= 0) {
         errors.push('Quantity must be greater than 0');
     }
 
@@ -200,7 +200,7 @@ export function getValidationStats(products: NormalizedProduct[]): {
         const errors = validateProduct(product);
         if (errors.length > 0) {
             invalid++;
-            issues.push({ sku: product.sku, errors });
+            issues.push({ sku: String(product['sku'] || ''), errors });
         } else {
             valid++;
         }

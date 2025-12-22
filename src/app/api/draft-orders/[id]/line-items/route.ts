@@ -178,13 +178,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                 // Build template context
                 const context: TemplateContext = {
-                    brand: data.brand,
-                    category: data.category,
-                    colour: data.color_normalized || data.color,
-                    gender: data.gender,
-                    season: data.season,
-                    size: data.size_normalized || data.size,
-                    ean: data.ean,
+                    brand: data['brand'] as string | undefined,
+                    category: data['category'] as string | undefined,
+                    color: (data['color_normalized'] || data['color']) as string | undefined,
+                    gender: data['gender'] as string | undefined,
+                    season: data['season'] as string | undefined,
+                    size: (data['size_normalized'] || data['size']) as string | undefined,
+                    ean: data['ean'] as string | undefined,
                     sequence: item.line_number || 1,
                 };
 

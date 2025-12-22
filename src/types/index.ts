@@ -96,55 +96,22 @@ export interface DraftLineItem {
     updated_at: string;
 }
 
+/** Raw product data from GPT Vision extraction - dynamic based on profile */
+export type RawExtractedProduct = Record<string, string>;
+
 export interface ValidationError {
     field: string;
     message: string;
     severity: 'warning' | 'error';
 }
 
-// ============================================
-// Product Types
-// ============================================
-
-/** Raw product data from GPT Vision extraction - dynamic based on profile */
-export type RawExtractedProduct = Record<string, string>;
-
-/** Normalized product ready for shop export */
-export interface NormalizedProduct {
-    // Core identifiers
-    sku: string;
-    ean?: string;
-    article_number?: string;
-    style_code?: string;
-    designer_code?: string;
-
-    // Product info
-    name: string;
-    brand: string;
-    supplier?: string;
-
-    // Attributes
-    color: string;
-    color_normalized?: string;
-    size: string;
-    size_normalized?: string;
-
-    // Pricing
-    price: number;
-    currency: string;
-
-    // Quantity
-    quantity: number;
-
-    // Enriched data
-    category?: string;
-    gender?: string;
-    season?: string;
-
-    // Match confidence from catalogue
-    match_confidence?: number;
-    match_type?: 'ean' | 'article' | 'style_color_size' | 'fuzzy' | 'none';
-}
+/**
+ * Normalized product ready for shop export.
+ * Fields are dynamic based on processing profile - no hardcoded structure.
+ * Common fields include: sku, name, brand, color, size, price, quantity
+ * but any field defined in the profile can be present.
+ */
+export type NormalizedProduct = Record<string, unknown>;
 
 // ============================================
 // Processing Context
@@ -206,7 +173,7 @@ export interface SkuTemplate {
 
 export interface CodeLookup {
     id: string;
-    type: string;  // Dynamic: brand, category, colour, gender, season_type, + custom types
+    field_key: string;  // Dynamic: brand, category, color, gender, + custom types
     name: string;
     code: string;
     aliases?: string[];

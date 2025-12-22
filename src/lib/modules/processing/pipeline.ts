@@ -38,8 +38,14 @@ export async function processOrder(
 
     // Step 1: Normalize products (using profile for field normalization)
     console.log('[Pipeline] Step 1: Normalizing products...');
-    const normalized = await normalizeProducts(rawProducts, context, profile);
-    console.log(`[Pipeline] Normalized ${normalized.length} products`);
+    let normalized: NormalizedProduct[];
+    try {
+        normalized = await normalizeProducts(rawProducts, context, profile);
+        console.log(`[Pipeline] Normalized ${normalized.length} products`);
+    } catch (normalizeError) {
+        console.error('[Pipeline] Normalization failed:', normalizeError);
+        throw normalizeError;
+    }
 
     // Step 2: Enrich with categories (skip if using a profile - profile defines the fields)
     let finalProducts = normalized;

@@ -30,7 +30,9 @@ interface FieldConfig {
     key: string;
     label: string;
     required?: boolean;
-    normalize_with?: string; // lookup type slug
+    normalize_with?: string; // lookup field_key for normalization
+    use_template?: boolean;  // if true, value is computed from template
+    template?: string;       // template string e.g. "{brand} - {name}"
 }
 
 interface ProcessingProfile {
@@ -39,37 +41,20 @@ interface ProcessingProfile {
     name: string;
     description?: string;
     fields: FieldConfig[];
-    sku_template?: string;
-    generate_sku?: boolean;
     is_default: boolean;
     created_at: string;
 }
 
-interface LookupType {
-    id: string;
-    slug: string;
-    label: string;
+// Available lookup types (from code_lookups.field_key)
+interface LookupOption {
+    field_key: string;
 }
 
-// Default fields available for extraction
-const DEFAULT_FIELDS: FieldConfig[] = [
-    { key: "name", label: "Product Name", required: true },
-    { key: "color", label: "Color" },
-    { key: "size", label: "Size" },
-    { key: "price", label: "Price", required: true },
-    { key: "quantity", label: "Quantity", required: true },
-    { key: "ean", label: "EAN/Barcode" },
-    { key: "brand", label: "Brand" },
-    { key: "category", label: "Category" },
-    { key: "sku", label: "SKU" },
-    { key: "articleNumber", label: "Article Number" },
-    { key: "styleCode", label: "Style Code" },
-    { key: "designerCode", label: "Designer Code" },
-];
+// No default fields - all fields are user-defined
 
 export default function ProcessingProfilesPage() {
     const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
-    const [lookupTypes, setLookupTypes] = useState<LookupType[]>([]);
+    const [lookupOptions, setLookupOptions] = useState<LookupOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingProfile, setEditingProfile] = useState<ProcessingProfile | null>(null);
@@ -79,8 +64,6 @@ export default function ProcessingProfilesPage() {
     const [formName, setFormName] = useState("");
     const [formDescription, setFormDescription] = useState("");
     const [formFields, setFormFields] = useState<FieldConfig[]>([]);
-    const [formSkuTemplate, setFormSkuTemplate] = useState("");
-    const [formGenerateSku, setFormGenerateSku] = useState(false);
     const [formIsDefault, setFormIsDefault] = useState(false);
 
     // Custom field creation
@@ -103,21 +86,22 @@ export default function ProcessingProfilesPage() {
         setIsLoading(false);
     }, []);
 
-    const fetchLookupTypes = useCallback(async () => {
+    const fetchLookupOptions = useCallback(async () => {
         const supabase = createClient();
         const { data } = await supabase
-            .from("lookup_types")
-            .select("id, slug, label")
-            .order("sort_order");
+            .from("code_lookups")
+            .select("field_key");
         if (data) {
-            setLookupTypes(data);
+            // Get unique field_keys
+            const uniqueKeys = [...new Set(data.map(d => d.field_key))];
+            setLookupOptions(uniqueKeys.map(k => ({ field_key: k })));
         }
     }, []);
 
     useEffect(() => {
         fetchProfiles();
-        fetchLookupTypes();
-    }, [fetchProfiles, fetchLookupTypes]);
+        fetchLookupOptions();
+    }, [fetchProfiles, fetchLookupOptions]);
 
     const openEditor = (profile?: ProcessingProfile) => {
         if (profile) {
@@ -125,31 +109,18 @@ export default function ProcessingProfilesPage() {
             setFormName(profile.name || "");
             setFormDescription(profile.description || "");
             setFormFields(Array.isArray(profile.fields) ? profile.fields : []);
-            setFormSkuTemplate(profile.sku_template || "");
-            setFormGenerateSku(profile.generate_sku || false);
             setFormIsDefault(profile.is_default || false);
         } else {
             setEditingProfile(null);
             setFormName("");
             setFormDescription("");
-            setFormFields(DEFAULT_FIELDS.slice(0, 8)); // Start with common fields
-            setFormSkuTemplate("{brand:2}{category:2}{colour:2}{sequence:3}-{size}");
-            setFormGenerateSku(false);
+            setFormFields([]);
             setFormIsDefault(false);
         }
         // Reset custom field inputs
         setNewFieldKey("");
         setNewFieldLabel("");
         setIsEditorOpen(true);
-    };
-
-    const toggleField = (field: FieldConfig) => {
-        const exists = formFields.find(f => f.key === field.key);
-        if (exists) {
-            setFormFields(formFields.filter(f => f.key !== field.key));
-        } else {
-            setFormFields([...formFields, { ...field }]);
-        }
     };
 
     const updateFieldNormalization = (key: string, lookupSlug: string | null) => {
@@ -160,10 +131,26 @@ export default function ProcessingProfilesPage() {
         ));
     };
 
-    const addCustomField = () => {
+    const toggleFieldTemplate = (key: string, useTemplate: boolean) => {
+        setFormFields(formFields.map(f =>
+            f.key === key
+                ? { ...f, use_template: useTemplate, template: useTemplate ? (f.template || '') : undefined }
+                : f
+        ));
+    };
+
+    const updateFieldTemplate = (key: string, template: string) => {
+        setFormFields(formFields.map(f =>
+            f.key === key
+                ? { ...f, template }
+                : f
+        ));
+    };
+
+    const addField = () => {
         if (!newFieldKey.trim() || !newFieldLabel.trim()) return;
         const key = newFieldKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        if (formFields.some(f => f.key === key) || DEFAULT_FIELDS.some(f => f.key === key)) {
+        if (formFields.some(f => f.key === key)) {
             alert("A field with this key already exists");
             return;
         }
@@ -172,7 +159,7 @@ export default function ProcessingProfilesPage() {
         setNewFieldLabel("");
     };
 
-    const removeCustomField = (key: string) => {
+    const removeField = (key: string) => {
         setFormFields(formFields.filter(f => f.key !== key));
     };
 
@@ -194,8 +181,6 @@ export default function ProcessingProfilesPage() {
                 name: formName,
                 description: formDescription || null,
                 fields: formFields,
-                sku_template: formSkuTemplate,
-                generate_sku: formGenerateSku,
                 is_default: formIsDefault,
             };
 
@@ -298,12 +283,6 @@ export default function ProcessingProfilesPage() {
                                         <span className="font-medium">Fields:</span>{" "}
                                         {profile.fields.map(f => f.label).join(", ")}
                                     </div>
-                                    {profile.sku_template && (
-                                        <div>
-                                            <span className="font-medium">SKU:</span>{" "}
-                                            <code className="bg-muted px-1 rounded">{profile.sku_template}</code>
-                                        </div>
-                                    )}
                                 </div>
                             </CardContent>
                         </Card>
@@ -313,7 +292,7 @@ export default function ProcessingProfilesPage() {
 
             {/* Profile Editor Dialog */}
             <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
                     <DialogHeader>
                         <DialogTitle>
                             {editingProfile ? `Edit: ${editingProfile.name}` : "New Processing Profile"}
@@ -355,108 +334,85 @@ export default function ProcessingProfilesPage() {
                             <div>
                                 <Label className="text-base font-semibold">Fields to Extract</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    Select which fields GPT should look for. Link to lookups for normalization.
+                                    Define which fields GPT should extract. Link to lookups for normalization.
                                 </p>
                             </div>
 
-                            {/* Default fields - single column for clarity */}
-                            <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
-                                {DEFAULT_FIELDS.map((field) => {
-                                    const isSelected = formFields.some(f => f.key === field.key);
-                                    const selectedField = formFields.find(f => f.key === field.key);
-
-                                    return (
-                                        <div key={field.key} className={`flex items-center gap-4 p-3 rounded-md transition-colors ${isSelected ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'}`}>
-                                            <Checkbox
-                                                checked={isSelected}
-                                                onCheckedChange={() => toggleField(field)}
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <span className="font-medium">{field.label}</span>
-                                                <span className="text-xs text-muted-foreground ml-2">({field.key})</span>
-                                            </div>
-                                            {isSelected && (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">Normalize with:</span>
-                                                    <Select
-                                                        value={selectedField?.normalize_with || "none"}
-                                                        onValueChange={(v) => updateFieldNormalization(field.key, v === "none" ? null : v)}
-                                                    >
-                                                        <SelectTrigger className="w-36 h-8">
-                                                            <SelectValue placeholder="None" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="none">None</SelectItem>
-                                                            {lookupTypes.map(lt => (
-                                                                <SelectItem key={lt.slug} value={lt.slug}>
-                                                                    {lt.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
+                            {/* Fields list */}
+                            {formFields.length > 0 ? (
+                                <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
+                                    {formFields.map((field) => (
+                                        <div key={field.key} className="p-3 bg-background rounded-md border space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="font-medium truncate">{field.label}</span>
+                                                    <span className="text-xs text-muted-foreground ml-1">({field.key})</span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Custom fields section */}
-                            {formFields.filter(f => !DEFAULT_FIELDS.some(d => d.key === f.key)).length > 0 && (
-                                <div className="mt-4 border rounded-lg p-3 bg-muted/30">
-                                    <Label className="text-sm font-medium">Custom Fields</Label>
-                                    <div className="space-y-2 mt-2">
-                                        {formFields
-                                            .filter(f => !DEFAULT_FIELDS.some(d => d.key === f.key))
-                                            .map((field) => (
-                                                <div key={field.key} className="flex items-center gap-4 p-3 bg-background rounded-md border">
-                                                    <div className="flex-1">
-                                                        <span className="font-medium">{field.label}</span>
-                                                        <span className="text-xs text-muted-foreground ml-2">({field.key})</span>
-                                                    </div>
+                                                {!field.use_template && (
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-muted-foreground">Normalize:</span>
+                                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Normalize:</span>
                                                         <Select
                                                             value={field.normalize_with || "none"}
                                                             onValueChange={(v) => updateFieldNormalization(field.key, v === "none" ? null : v)}
                                                         >
-                                                            <SelectTrigger className="w-36 h-8">
+                                                            <SelectTrigger className="w-28 h-8">
                                                                 <SelectValue placeholder="None" />
                                                             </SelectTrigger>
                                                             <SelectContent>
                                                                 <SelectItem value="none">None</SelectItem>
-                                                                {lookupTypes.map(lt => (
-                                                                    <SelectItem key={lt.slug} value={lt.slug}>
-                                                                        {lt.label}
+                                                                {lookupOptions.map((opt: LookupOption) => (
+                                                                    <SelectItem key={opt.field_key} value={opt.field_key}>
+                                                                        {opt.field_key}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="text-red-500"
-                                                        onClick={() => removeCustomField(field.key)}
-                                                    >
-                                                        Remove
-                                                    </Button>
+                                                )}
+                                                <div className="flex items-center gap-1.5">
+                                                    <Checkbox
+                                                        id={`template-${field.key}`}
+                                                        checked={field.use_template || false}
+                                                        onCheckedChange={(v) => toggleFieldTemplate(field.key, !!v)}
+                                                    />
+                                                    <Label htmlFor={`template-${field.key}`} className="text-xs cursor-pointer">Template</Label>
                                                 </div>
-                                            ))}
-                                    </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-red-500 hover:text-red-600 px-2"
+                                                    onClick={() => removeField(field.key)}
+                                                >
+                                                    ✕
+                                                </Button>
+                                            </div>
+                                            {field.use_template && (
+                                                <Input
+                                                    value={field.template || ''}
+                                                    onChange={(e) => updateFieldTemplate(field.key, e.target.value)}
+                                                    placeholder="e.g., {brand} - {name} ({color})"
+                                                    className="text-sm"
+                                                />
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="border rounded-lg p-6 text-center text-muted-foreground">
+                                    No fields defined yet. Add fields below.
                                 </div>
                             )}
 
-                            {/* Add custom field - clearer layout */}
+                            {/* Add field */}
                             <div className="border-t pt-4 mt-4">
-                                <Label className="text-sm font-medium mb-2 block">Add Custom Field</Label>
+                                <Label className="text-sm font-medium mb-2 block">Add Field</Label>
                                 <div className="flex items-end gap-3">
                                     <div className="flex-1 space-y-1">
                                         <Label className="text-xs text-muted-foreground">Display Name</Label>
                                         <Input
                                             value={newFieldLabel}
                                             onChange={(e) => setNewFieldLabel(e.target.value)}
-                                            placeholder="e.g., Material"
+                                            placeholder="e.g., Product Name"
                                         />
                                     </div>
                                     <div className="w-40 space-y-1">
@@ -464,52 +420,18 @@ export default function ProcessingProfilesPage() {
                                         <Input
                                             value={newFieldKey}
                                             onChange={(e) => setNewFieldKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                                            placeholder="material"
+                                            placeholder="product_name"
                                             className="font-mono"
                                         />
                                     </div>
                                     <Button
-                                        onClick={addCustomField}
+                                        onClick={addField}
                                         disabled={!newFieldKey.trim() || !newFieldLabel.trim()}
                                     >
-                                        + Add Field
+                                        + Add
                                     </Button>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* SKU Generation */}
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="generate-sku"
-                                    checked={formGenerateSku}
-                                    onChange={(e) => setFormGenerateSku(e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-300"
-                                />
-                                <Label htmlFor="generate-sku" className="text-base font-semibold cursor-pointer">
-                                    Generate SKU
-                                </Label>
-                            </div>
-
-                            {formGenerateSku && (
-                                <>
-                                    <p className="text-sm text-muted-foreground">
-                                        Define how SKUs are generated. Use {`{variable:length}`} syntax.
-                                    </p>
-                                    <Input
-                                        value={formSkuTemplate}
-                                        onChange={(e) => setFormSkuTemplate(e.target.value)}
-                                        placeholder="{brand:2}{category:2}{colour:2}{sequence:3}-{size}"
-                                        className="font-mono"
-                                    />
-                                    <div className="text-xs text-muted-foreground">
-                                        Available: {lookupTypes.map(lt => `{${lt.slug}}`).join(", ")},
-                                        {" "}{`{size}`}, {`{sequence}`}, {`{year}`}, {`{ean}`}
-                                    </div>
-                                </>
-                            )}
                         </div>
                     </div>
 

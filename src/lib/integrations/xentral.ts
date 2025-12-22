@@ -22,7 +22,7 @@ export async function uploadToXentral(
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         return products.map((p, index) => ({
-            sku: p.sku,
+            sku: String(p['sku'] || ''),
             status: "success" as const,
             message: "Mocked upload successful",
             xentralId: `XEN-${String(index + 1).padStart(6, "0")}`,
@@ -48,9 +48,9 @@ export async function uploadToXentral(
                     Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
-                    nummer: product.sku,
-                    name_de: product.name,
-                    hersteller: product.brand,
+                    nummer: product['sku'],
+                    name_de: product['name'],
+                    hersteller: product['brand'],
                     // Add more fields as needed
                 }),
             });
@@ -58,20 +58,20 @@ export async function uploadToXentral(
             if (response.ok) {
                 const data = await response.json();
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: "success",
                     xentralId: data.id,
                 });
             } else {
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: "error",
                     message: `HTTP ${response.status}`,
                 });
             }
         } catch (error) {
             results.push({
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: "error",
                 message: error instanceof Error ? error.message : "Unknown error",
             });
@@ -92,7 +92,7 @@ export async function updateInXentral(
         console.log("[MOCK] Updating in Xentral:", xentralId, updates);
         await new Promise((resolve) => setTimeout(resolve, 200));
         return {
-            sku: updates.sku || "",
+            sku: String(updates['sku'] || ''),
             status: "success",
             message: "Mocked update successful",
             xentralId,

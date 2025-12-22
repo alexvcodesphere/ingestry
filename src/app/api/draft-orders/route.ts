@@ -126,7 +126,6 @@ export async function POST(request: NextRequest) {
         const { prompt: systemPrompt, profile } = await getPromptForProfile(profileId || undefined);
         console.log(`[API] Profile: ${profile?.name || 'fallback'}`);
         console.log(`[API] Profile fields: ${profile?.fields?.map((f: { key: string }) => f.key).join(', ') || 'default'}`);
-        console.log(`[API] SKU template: ${profile?.sku_template || 'default'}`);
         console.log(`[API] Prompt preview: ${systemPrompt.substring(0, 200)}...`);
 
         // Extract products using GPT Vision

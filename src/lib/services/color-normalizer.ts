@@ -17,7 +17,7 @@ export async function normalizeColor(rawColor: string): Promise<string> {
     const { data: exactMatch } = await supabase
         .from("code_lookups")
         .select("name")
-        .eq("type", "colour")
+        .eq("field_key", "color")
         .ilike("name", normalized)
         .limit(1)
         .single();
@@ -30,7 +30,7 @@ export async function normalizeColor(rawColor: string): Promise<string> {
     const { data: allColors } = await supabase
         .from("code_lookups")
         .select("name, aliases")
-        .eq("type", "colour");
+        .eq("field_key", "color");
 
     if (allColors) {
         for (const color of allColors as CodeLookup[]) {

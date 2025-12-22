@@ -22,7 +22,7 @@ export async function uploadToShopware(
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         return products.map((p, index) => ({
-            sku: p.sku,
+            sku: String(p['sku'] || ''),
             status: "success" as const,
             message: "Mocked upload successful",
             shopwareId: `SW-${String(index + 1).padStart(6, "0")}`,
@@ -48,9 +48,9 @@ export async function uploadToShopware(
                     Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
-                    productNumber: product.sku,
-                    name: product.name,
-                    manufacturer: product.brand,
+                    productNumber: product['sku'],
+                    name: product['name'],
+                    manufacturer: product['brand'],
                     // Add more fields as needed
                 }),
             });
@@ -58,20 +58,20 @@ export async function uploadToShopware(
             if (response.ok) {
                 const data = await response.json();
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: "success",
                     shopwareId: data.id,
                 });
             } else {
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: "error",
                     message: `HTTP ${response.status}`,
                 });
             }
         } catch (error) {
             results.push({
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: "error",
                 message: error instanceof Error ? error.message : "Unknown error",
             });

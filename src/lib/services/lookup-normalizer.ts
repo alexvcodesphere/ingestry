@@ -95,7 +95,7 @@ export async function normalizeWithDetails(
     const { data: lookups } = await supabase
         .from('code_lookups')
         .select('name, code, aliases')
-        .eq('type', lookupType);
+        .eq('field_key', lookupType);
 
     if (!lookups || lookups.length === 0) {
         return { normalized: rawValue, code: '', matchType: 'none' };

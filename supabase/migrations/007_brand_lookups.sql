@@ -2,7 +2,29 @@
 -- Migrates brand data from legacy suppliers table format to unified code_lookups format
 -- This allows brands to use aliases just like other lookup types
 
--- First, seed the brand lookup type if not exists
+-- First, add a unique constraint that includes tenant_id if it doesn't exist
+-- (The original UNIQUE(type, name) needs to be updated for multi-tenancy)
+DO $$
+BEGIN
+    -- Drop the old constraint if it exists
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'code_lookups_type_name_key'
+    ) THEN
+        ALTER TABLE code_lookups DROP CONSTRAINT code_lookups_type_name_key;
+    END IF;
+    
+    -- Create the new constraint including tenant_id (if it doesn't already exist)
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'code_lookups_tenant_type_name_key'
+    ) THEN
+        ALTER TABLE code_lookups 
+        ADD CONSTRAINT code_lookups_tenant_type_name_key UNIQUE (tenant_id, type, name);
+    END IF;
+END $$;
+
+-- Seed the brand lookup type if not exists
 INSERT INTO lookup_types (tenant_id, slug, label, description, variable_name, is_system, sort_order)
 SELECT 
     (SELECT id FROM tenants LIMIT 1),
@@ -16,7 +38,7 @@ WHERE NOT EXISTS (
     SELECT 1 FROM lookup_types WHERE slug = 'brand'
 );
 
--- Insert brand data into code_lookups (same data as was in suppliers table)
+-- Insert brand data into code_lookups
 -- Format: name = brand_name (display name), code = brand_code (for SKU)
 -- Aliases can include supplier_name and common variations
 INSERT INTO code_lookups (tenant_id, type, name, code, aliases, sort_order)

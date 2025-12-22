@@ -2,8 +2,8 @@
 
 /**
  * Code Lookups Settings Page
- * Manage dynamic lookup types (brand, category, colour, custom, etc.)
- * Fetches lookup_types from database for multi-tenant support.
+ * Manage global lookup entries (brand, category, color, custom, etc.)
+ * Lookups are keyed by field_key and shared across all profiles.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -36,16 +36,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Trash2 } from "lucide-react";
 import type { CodeLookup } from "@/types";
 
-// Lookup type from database
-interface LookupType {
-    id: string;
-    tenant_id: string;
-    slug: string;
-    label: string;
-    description?: string;
-    is_system: boolean;
-    variable_name?: string;
-    sort_order: number;
+// Simple field key info for tabs
+interface FieldKeyInfo {
+    field_key: string;
+    count: number;
 }
 
 // Combined type for display
@@ -58,7 +52,7 @@ type LookupItem = {
 };
 
 export default function CodeLookupsPage() {
-    const [lookupTypes, setLookupTypes] = useState<LookupType[]>([]);
+    const [fieldDefinitions, setFieldDefinitions] = useState<FieldKeyInfo[]>([]);
     const [activeType, setActiveType] = useState<string>("");
     const [lookups, setLookups] = useState<LookupItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -94,30 +88,37 @@ export default function CodeLookupsPage() {
     } | null>(null);
     const [isTesting, setIsTesting] = useState(false);
 
-    const activeConfig = lookupTypes.find(t => t.slug === activeType);
-
-    // Fetch lookup types from database
-    const fetchLookupTypes = useCallback(async () => {
+    // Get unique field_keys from code_lookups
+    const fetchFieldKeys = useCallback(async () => {
         setIsTypesLoading(true);
         const supabase = createClient();
 
+        // Get distinct field_keys from code_lookups
         const { data, error } = await supabase
-            .from("lookup_types")
-            .select("*")
-            .order("sort_order");
+            .from("code_lookups")
+            .select("field_key")
+            .order("field_key");
 
-        if (!error && data && data.length > 0) {
-            setLookupTypes(data);
-            if (!activeType) {
-                setActiveType(data[0].slug);
+        if (!error && data) {
+            // Get unique field_keys with counts
+            const keyMap = new Map<string, number>();
+            data.forEach(row => {
+                keyMap.set(row.field_key, (keyMap.get(row.field_key) || 0) + 1);
+            });
+            const fieldKeys = Array.from(keyMap.entries()).map(([field_key, count]) => ({ field_key, count }));
+            setFieldDefinitions(fieldKeys);
+            if (!activeType && fieldKeys.length > 0) {
+                setActiveType(fieldKeys[0].field_key);
             }
         }
         setIsTypesLoading(false);
     }, [activeType]);
 
     useEffect(() => {
-        fetchLookupTypes();
-    }, [fetchLookupTypes]);
+        fetchFieldKeys();
+    }, [fetchFieldKeys]);
+
+    const activeConfig = fieldDefinitions.find(f => f.field_key === activeType);
 
     // Fetch lookup values - all types use code_lookups table
     const fetchLookups = useCallback(async (typeSlug: string) => {
@@ -129,7 +130,7 @@ export default function CodeLookupsPage() {
         const { data, error } = await supabase
             .from("code_lookups")
             .select("*")
-            .eq("type", typeSlug)
+            .eq("field_key", typeSlug)
             .order("sort_order");
 
         if (!error && data) {
@@ -193,12 +194,13 @@ export default function CodeLookupsPage() {
         const supabase = createClient();
 
         try {
-            // All types use code_lookups table
-            const tenantId = lookupTypes[0]?.tenant_id;
             const aliasArray = formData.aliases
                 .split(",")
                 .map(a => a.trim())
                 .filter(a => a.length > 0);
+
+            // Get tenant_id via RPC
+            const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
 
             if (editingLookup) {
                 const { error } = await supabase
@@ -215,7 +217,7 @@ export default function CodeLookupsPage() {
                     .from("code_lookups")
                     .insert({
                         tenant_id: tenantId,
-                        type: activeType,
+                        field_key: activeType,
                         name: formData.name,
                         code: formData.code.toUpperCase(),
                         aliases: aliasArray,
@@ -224,6 +226,7 @@ export default function CodeLookupsPage() {
             }
             setIsDialogOpen(false);
             await fetchLookups(activeType);
+            await fetchFieldKeys(); // Refresh counts
         } catch (error) {
             console.error("Failed to save:", error);
             alert("Failed to save. The name might already exist.");
@@ -240,19 +243,15 @@ export default function CodeLookupsPage() {
         await fetchLookups(activeType);
     };
 
-    // Type management handlers
+    // Create a new lookup type (just inserts a placeholder entry)
     const handleCreateType = async () => {
         setIsTypeSaving(true);
         const supabase = createClient();
 
-        const slug = typeFormData.slug || typeFormData.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const newFieldKey = typeFormData.slug || typeFormData.label.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
-        // Get tenant_id from existing lookup type or via RPC
-        let tenantId = lookupTypes[0]?.tenant_id;
-        if (!tenantId) {
-            const { data: tenantData } = await supabase.rpc('get_user_tenant_id');
-            tenantId = tenantData;
-        }
+        // Get tenant_id via RPC
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
 
         if (!tenantId) {
             alert("No tenant found. Please contact support.");
@@ -261,44 +260,43 @@ export default function CodeLookupsPage() {
         }
 
         try {
+            // Insert a placeholder entry to create this field_key
             const { error } = await supabase
-                .from("lookup_types")
+                .from("code_lookups")
                 .insert({
                     tenant_id: tenantId,
-                    slug,
-                    label: typeFormData.label,
-                    description: typeFormData.description || null,
-                    variable_name: slug,
-                    is_system: false,
-                    sort_order: lookupTypes.length + 1,
+                    field_key: newFieldKey,
+                    name: "Example",
+                    code: "00",
+                    aliases: [],
                 });
 
             if (error) throw error;
 
             setIsTypeDialogOpen(false);
             setTypeFormData({ label: "", slug: "", description: "" });
-            await fetchLookupTypes();
-            setActiveType(slug);
+            await fetchFieldKeys();
+            setActiveType(newFieldKey);
         } catch (error) {
-            console.error("Failed to create type:", error);
-            alert("Failed to create lookup type. The name might already exist.");
+            console.error("Failed to create lookup type:", error);
+            alert("Failed to create. The key might already exist.");
         } finally {
             setIsTypeSaving(false);
         }
     };
 
-    const handleDeleteType = async (typeId: string, typeSlug: string) => {
-        if (!confirm("Delete this lookup type and all its values?")) return;
+    const handleDeleteType = async (fieldKey: string) => {
+        if (!confirm(`Delete all "${fieldKey}" lookup entries?`)) return;
 
         const supabase = createClient();
+        await supabase.from("code_lookups").delete().eq("field_key", fieldKey);
 
-        // Delete the type (cascades to lookup values via FK)
-        await supabase.from("lookup_types").delete().eq("id", typeId);
-        await supabase.from("code_lookups").delete().eq("type", typeSlug);
-
-        await fetchLookupTypes();
-        if (lookupTypes.length > 1) {
-            setActiveType(lookupTypes.find(t => t.id !== typeId)?.slug || "");
+        await fetchFieldKeys();
+        if (fieldDefinitions.length > 1) {
+            const remaining = fieldDefinitions.find(f => f.field_key !== fieldKey);
+            setActiveType(remaining?.field_key || "");
+        } else {
+            setActiveType("");
         }
     };
 
@@ -319,7 +317,7 @@ export default function CodeLookupsPage() {
         );
     }
 
-    if (lookupTypes.length === 0) {
+    if (fieldDefinitions.length === 0) {
         return (
             <div className="space-y-6">
                 <div>
@@ -345,11 +343,11 @@ export default function CodeLookupsPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {activeConfig && !activeConfig.is_system && (
+                    {activeConfig && (
                         <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteType(activeConfig.id, activeConfig.slug)}
+                            onClick={() => handleDeleteType(activeConfig.field_key)}
                             className="h-8 w-8 text-muted-foreground hover:text-red-500"
                             title="Delete lookup type"
                         >
@@ -357,7 +355,7 @@ export default function CodeLookupsPage() {
                         </Button>
                     )}
                     <Button variant="outline" onClick={() => setIsTypeDialogOpen(true)}>
-                        + Add Lookup Type
+                        + Add Field
                     </Button>
                 </div>
             </div>
@@ -429,31 +427,31 @@ export default function CodeLookupsPage() {
 
             <Tabs value={activeType} onValueChange={setActiveType}>
                 <TabsList className="flex-wrap h-auto gap-1">
-                    {lookupTypes.map(type => (
-                        <TabsTrigger key={type.slug} value={type.slug}>
-                            {type.label}
+                    {fieldDefinitions.map((field: FieldKeyInfo) => (
+                        <TabsTrigger key={field.field_key} value={field.field_key}>
+                            {field.field_key} ({field.count})
                         </TabsTrigger>
                     ))}
                 </TabsList>
 
-                {lookupTypes.map(type => (
-                    <TabsContent key={type.slug} value={type.slug} className="space-y-4">
+                {fieldDefinitions.map((field: FieldKeyInfo) => (
+                    <TabsContent key={field.field_key} value={field.field_key} className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <Input
-                                    placeholder={`Search ${type.label.toLowerCase()}...`}
+                                    placeholder={`Search ${field.field_key}...`}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="max-w-xs"
                                 />
-                                {type.variable_name && (
+                                {field.field_key && (
                                     <span className="text-xs text-muted-foreground">
-                                        Template: <code className="bg-muted px-1 rounded">{`{${type.variable_name}}`}</code>
+                                        Template: <code className="bg-muted px-1 rounded">{`{${field.field_key}}`}</code>
                                     </span>
                                 )}
                             </div>
                             <Button onClick={() => handleOpenDialog()}>
-                                Add {type.label.slice(0, -1)}
+                                Add {field.field_key}
                             </Button>
                         </div>
 
@@ -465,7 +463,7 @@ export default function CodeLookupsPage() {
                                     </div>
                                 ) : filteredLookups.length === 0 ? (
                                     <div className="text-center py-12 text-muted-foreground">
-                                        No {type.label.toLowerCase()} found
+                                        No {field.field_key} found
                                     </div>
                                 ) : (
                                     <Table>
@@ -526,7 +524,7 @@ export default function CodeLookupsPage() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>
-                            {editingLookup ? `Edit ${activeConfig?.label.slice(0, -1)}` : `Add ${activeConfig?.label.slice(0, -1)}`}
+                            {editingLookup ? `Edit ${activeType}` : `Add ${activeType}`}
                         </DialogTitle>
                         <DialogDescription>
                             Create a canonical entry. Aliases allow variations like typos or other languages to map here.
@@ -556,9 +554,9 @@ export default function CodeLookupsPage() {
                                 placeholder="e.g., 01"
                                 maxLength={10}
                             />
-                            {activeConfig?.variable_name && (
+                            {activeConfig?.field_key && (
                                 <p className="text-xs text-muted-foreground">
-                                    Used in SKU template as <code className="bg-muted px-1 rounded">{`{${activeConfig.variable_name}}`}</code>
+                                    Used in SKU template as <code className="bg-muted px-1 rounded">{`{${activeConfig.field_key}}`}</code>
                                 </p>
                             )}
                         </div>

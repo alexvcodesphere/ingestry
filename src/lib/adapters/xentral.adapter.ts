@@ -53,7 +53,7 @@ export class XentralAdapter implements ShopAdapter {
             } catch (error) {
                 failed++;
                 results.push({
-                    sku: product.sku,
+                    sku: String(product['sku'] || ''),
                     status: 'error',
                     message: error instanceof Error ? error.message : 'Unknown error',
                 });
@@ -77,14 +77,14 @@ export class XentralAdapter implements ShopAdapter {
         if (response.ok) {
             const data = await response.json();
             return {
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: 'success',
                 externalId: data.id?.toString(),
             };
         } else {
             const error = await response.text();
             return {
-                sku: product.sku,
+                sku: String(product['sku'] || ''),
                 status: 'error',
                 message: `HTTP ${response.status}: ${error}`,
             };
@@ -93,19 +93,19 @@ export class XentralAdapter implements ShopAdapter {
 
     private mapToXentralFormat(product: NormalizedProduct): Record<string, unknown> {
         return {
-            nummer: product.sku,
-            name_de: product.name,
-            name_en: product.name,
-            hersteller: product.brand,
-            herstellernummer: product.article_number,
-            ean: product.ean,
-            lagerbestand: product.quantity,
-            preis: product.price,
-            waehrung: product.currency,
-            kategorie: product.category,
-            eigenschaftwert1: product.color_normalized || product.color, // Color
-            eigenschaftwert2: product.size_normalized || product.size,   // Size
-            geschlecht: this.mapGender(product.gender),
+            nummer: product['sku'],
+            name_de: product['name'],
+            name_en: product['name'],
+            hersteller: product['brand'],
+            herstellernummer: product['article_number'],
+            ean: product['ean'],
+            lagerbestand: product['quantity'],
+            preis: product['price'],
+            waehrung: product['currency'],
+            kategorie: product['category'],
+            eigenschaftwert1: product['color_normalized'] || product['color'], // Color
+            eigenschaftwert2: product['size_normalized'] || product['size'],   // Size
+            geschlecht: this.mapGender(product['gender'] as string | undefined),
         };
     }
 
@@ -123,7 +123,7 @@ export class XentralAdapter implements ShopAdapter {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const results: UploadResult[] = products.map((p, index) => ({
-            sku: p.sku,
+            sku: String(p['sku'] || ''),
             status: 'success' as const,
             externalId: `XEN-${String(index + 1).padStart(6, '0')}`,
             message: 'Mock upload successful',
@@ -183,7 +183,7 @@ export class XentralAdapter implements ShopAdapter {
             console.log(`[MOCK Xentral] Updating product ${externalId}`, updates);
             await new Promise(resolve => setTimeout(resolve, 200));
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'success',
                 externalId,
                 message: 'Mock update successful',
@@ -202,13 +202,13 @@ export class XentralAdapter implements ShopAdapter {
 
         if (response.ok) {
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'success',
                 externalId,
             };
         } else {
             return {
-                sku: updates.sku || externalId,
+                sku: String(updates['sku'] || externalId),
                 status: 'error',
                 message: `HTTP ${response.status}`,
             };

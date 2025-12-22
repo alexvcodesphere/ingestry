@@ -25,7 +25,7 @@ export interface TemplateVariable {
 export interface TemplateContext {
     brand?: string;
     category?: string;
-    colour?: string;
+    color?: string;
     size?: string;
     gender?: string;
     season?: string;
@@ -70,6 +70,7 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
 
 /**
  * Resolve a single variable to its value
+ * Only {sequence} is computed - all other variables use lookups or raw values
  */
 export async function resolveVariable(
     variable: TemplateVariable,
@@ -78,49 +79,18 @@ export async function resolveVariable(
 ): Promise<string> {
     let value: string;
 
-    switch (variable.name) {
-        case 'brand':
-            value = await lookupCode('brand', context.brand || '', lookups);
-            break;
-        case 'category':
-            value = await lookupCode('category', context.category || '', lookups);
-            break;
-        case 'colour':
-        case 'color':
-            value = await lookupCode('colour', context.colour || '', lookups);
-            break;
-        case 'gender':
-            value = resolveGender(context.gender || 'unisex');
-            break;
-        case 'season':
-            value = resolveSeason(context.season || '');
-            break;
-        case 'size':
-            value = context.size || '';
-            break;
-        case 'ean':
-            value = context.ean || '';
-            break;
-        case 'sequence':
-            value = String(context.sequence);
-            break;
-        case 'year':
-            value = String(context.year || new Date().getFullYear() % 100);
-            break;
-        default:
-            // Try as a dynamic lookup type (custom types like material, collection, etc.)
-            // First check if there's a lookup for this type
-            const lookupValue = await lookupCode(variable.name, context.custom?.[variable.name] || '', lookups);
-            if (lookupValue !== '00') {
-                value = lookupValue;
-            } else if (variable.name.startsWith('custom.')) {
-                // Legacy custom.* syntax for direct values
-                const key = variable.name.slice(7);
-                value = context.custom?.[key] || '';
-            } else {
-                // Check custom context for the value directly
-                value = context.custom?.[variable.name] || '';
-            }
+    // Only sequence is computed, everything else goes through lookup
+    if (variable.name === 'sequence') {
+        value = String(context.sequence);
+    } else {
+        // Get the raw value from context
+        const rawValue = getContextValue(variable.name, context);
+
+        // Try to look up a code for this value
+        const lookupResult = await lookupCode(variable.name, rawValue, lookups);
+
+        // Use lookup result if found, otherwise use raw value
+        value = lookupResult !== '00' ? lookupResult : rawValue;
     }
 
     // Apply modifier (length/padding)
@@ -135,6 +105,41 @@ export async function resolveVariable(
     }
 
     return value;
+}
+
+/**
+ * Get a value from the template context by variable name
+ */
+function getContextValue(name: string, context: TemplateContext): string {
+    // Check direct context properties first
+    const directProps: Record<string, string | undefined> = {
+        brand: context.brand,
+        category: context.category,
+        color: context.color,
+        size: context.size,
+        gender: context.gender,
+        season: context.season,
+        season_type: context.custom?.['season_type'],
+        ean: context.ean,
+        year: context.year?.toString(),
+    };
+
+    if (name in directProps && directProps[name]) {
+        return directProps[name] || '';
+    }
+
+    // Check custom context
+    if (context.custom?.[name]) {
+        return context.custom[name];
+    }
+
+    // Legacy custom.* syntax
+    if (name.startsWith('custom.')) {
+        const key = name.slice(7);
+        return context.custom?.[key] || '';
+    }
+
+    return '';
 }
 
 /**
@@ -168,69 +173,6 @@ async function lookupCode(
 }
 
 /**
- * Resolve gender to code
- */
-function resolveGender(gender: string): string {
-    const g = gender.toLowerCase();
-    if (g.includes('women') || g.includes('female') || g === 'w' || g === 'f') return 'W';
-    if ((g.includes('men') && !g.includes('women')) || g === 'm' || g === 'male') return 'M';
-    return 'U';
-}
-
-/**
- * Resolve season to code
- * Format: SS23 -> 123, AW24 -> 224, CarryOver -> 300, Archive -> 400
- */
-function resolveSeason(season: string): string {
-    if (!season) {
-        const now = new Date();
-        const month = now.getMonth();
-        const year = now.getFullYear() % 100;
-        return month >= 1 && month <= 6 ? `1${year}` : `2${year}`;
-    }
-
-    const upper = season.toUpperCase().replace(/\s+/g, '');
-
-    if (upper === 'CARRYOVER' || upper === 'CO') return '300';
-    if (upper === 'ARCHIVE') return '400';
-
-    let prefix = '';
-    let year = '';
-
-    if (upper.startsWith('SS')) {
-        prefix = '1';
-        year = upper.replace('SS', '');
-    } else if (upper.startsWith('AW')) {
-        prefix = '2';
-        year = upper.replace('AW', '');
-    } else if (upper.includes('SPRING') || upper.includes('SUMMER')) {
-        prefix = '1';
-        const match = upper.match(/\d{2,4}/);
-        year = match ? match[0] : '';
-    } else if (upper.includes('AUTUMN') || upper.includes('FALL') || upper.includes('WINTER')) {
-        prefix = '2';
-        const match = upper.match(/\d{2,4}/);
-        year = match ? match[0] : '';
-    } else {
-        const match = upper.match(/\d{2,4}/);
-        if (match) {
-            year = match[0];
-            prefix = '1';
-        } else {
-            const now = new Date();
-            const month = now.getMonth();
-            const currentYear = now.getFullYear() % 100;
-            return month >= 1 && month <= 6 ? `1${currentYear}` : `2${currentYear}`;
-        }
-    }
-
-    if (year.length === 4) year = year.slice(-2);
-    if (!year) year = String(new Date().getFullYear() % 100);
-
-    return `${prefix}${year}`;
-}
-
-/**
  * Load all code lookups from database
  */
 export async function loadCodeLookups(): Promise<Map<string, Map<string, string>>> {
@@ -239,7 +181,7 @@ export async function loadCodeLookups(): Promise<Map<string, Map<string, string>
 
     const { data, error } = await supabase
         .from('code_lookups')
-        .select('type, name, code, aliases');
+        .select('field_key, name, code, aliases');
 
     if (error || !data) {
         console.error('Failed to load code lookups:', error);
@@ -247,18 +189,18 @@ export async function loadCodeLookups(): Promise<Map<string, Map<string, string>
     }
 
     for (const row of data) {
-        if (!lookups.has(row.type)) {
-            lookups.set(row.type, new Map());
+        if (!lookups.has(row.field_key)) {
+            lookups.set(row.field_key, new Map());
         }
 
-        const typeLookup = lookups.get(row.type)!;
+        const fieldLookup = lookups.get(row.field_key)!;
         const normalized = row.name.toLowerCase().trim();
-        typeLookup.set(normalized, row.code);
+        fieldLookup.set(normalized, row.code);
 
         // Add aliases
         if (row.aliases && Array.isArray(row.aliases)) {
             for (const alias of row.aliases) {
-                typeLookup.set(alias.toLowerCase().trim(), row.code);
+                fieldLookup.set(alias.toLowerCase().trim(), row.code);
             }
         }
     }
@@ -303,7 +245,7 @@ export async function getDefaultTemplate(): Promise<string> {
 
     if (error || !data) {
         // Fallback to hardcoded default
-        return '{season}{brand:2}{gender}{category:2}{colour:2}{sequence:3}-{size}';
+        return '{season}{brand:2}{gender}{category:2}{color:2}{sequence:3}-{size}';
     }
 
     return data.template;
