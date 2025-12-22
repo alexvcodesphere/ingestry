@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Color } from "@/types";
+import type { CodeLookup } from "@/types";
 
 /**
  * Normalize a raw color string to a canonical color name
- * Uses database lookups with alias matching and fuzzy search
+ * Uses code_lookups table with alias matching and fuzzy search
  */
 export async function normalizeColor(rawColor: string): Promise<string> {
     if (!rawColor || rawColor.trim() === "") {
@@ -13,43 +13,45 @@ export async function normalizeColor(rawColor: string): Promise<string> {
     const supabase = await createClient();
     const normalized = rawColor.toLowerCase().trim();
 
-    // 1. Try exact match on canonical name
+    // 1. Try exact match on name
     const { data: exactMatch } = await supabase
-        .from("colors")
-        .select("canonical_name")
-        .ilike("canonical_name", normalized)
+        .from("code_lookups")
+        .select("name")
+        .eq("type", "colour")
+        .ilike("name", normalized)
         .limit(1)
         .single();
 
     if (exactMatch) {
-        return exactMatch.canonical_name;
+        return exactMatch.name;
     }
 
     // 2. Try alias match
     const { data: allColors } = await supabase
-        .from("colors")
-        .select("canonical_name, aliases");
+        .from("code_lookups")
+        .select("name, aliases")
+        .eq("type", "colour");
 
     if (allColors) {
-        for (const color of allColors as Color[]) {
-            if (color.aliases?.some((alias) => alias.toLowerCase() === normalized)) {
-                return color.canonical_name;
+        for (const color of allColors as CodeLookup[]) {
+            if (color.aliases?.some((alias: string) => alias.toLowerCase() === normalized)) {
+                return color.name;
             }
         }
 
         // 3. Fuzzy match - check if raw color contains or is contained by canonical/alias
-        for (const color of allColors as Color[]) {
-            const canonicalLower = color.canonical_name.toLowerCase();
+        for (const color of allColors as CodeLookup[]) {
+            const nameLower = color.name.toLowerCase();
             if (
-                normalized.includes(canonicalLower) ||
-                canonicalLower.includes(normalized)
+                normalized.includes(nameLower) ||
+                nameLower.includes(normalized)
             ) {
-                return color.canonical_name;
+                return color.name;
             }
             for (const alias of color.aliases || []) {
                 const aliasLower = alias.toLowerCase();
                 if (normalized.includes(aliasLower) || aliasLower.includes(normalized)) {
-                    return color.canonical_name;
+                    return color.name;
                 }
             }
         }

@@ -154,14 +154,31 @@ function detectGenderFromCategory(category: string): string | undefined {
 
 /**
  * Validate that required fields are present
+ * Validation is now dynamic - only checks fields that exist in the product
  */
 export function validateProduct(product: NormalizedProduct): string[] {
     const errors: string[] = [];
+    const productRecord = product as unknown as Record<string, unknown>;
 
-    if (!product.sku) errors.push('SKU is required');
-    if (!product.name) errors.push('Name is required');
-    if (product.price <= 0) errors.push('Price must be greater than 0');
-    if (product.quantity <= 0) errors.push('Quantity must be greater than 0');
+    // Only validate SKU if it exists as a field (i.e., profile has generate_sku enabled)
+    if ('sku' in productRecord && !product.sku) {
+        errors.push('SKU is required');
+    }
+
+    // Only validate name if it exists as a field
+    if ('name' in productRecord && !product.name) {
+        errors.push('Name is required');
+    }
+
+    // Only validate price if it exists as a field
+    if ('price' in productRecord && product.price <= 0) {
+        errors.push('Price must be greater than 0');
+    }
+
+    // Only validate quantity if it exists as a field
+    if ('quantity' in productRecord && product.quantity <= 0) {
+        errors.push('Quantity must be greater than 0');
+    }
 
     return errors;
 }

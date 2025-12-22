@@ -1,36 +1,8 @@
 // Database types for Supabase
 
-export interface Supplier {
-    id: string;
-    brand_name: string;
-    supplier_name: string;
-    brand_code: string;
-    created_at?: string;
-}
-
-export interface Category {
-    id: string;
-    code: string;
-    name: string;
-    article_tree: string[];
-    created_at?: string;
-}
-
-export interface Color {
-    id: string;
-    canonical_name: string;
-    code: string;
-    aliases: string[];
-    created_at?: string;
-}
-
-export interface Catalogue {
-    id: string;
-    name: string;
-    headers: string[];
-    file_path: string;
-    created_at: string;
-}
+// ============================================
+// Job Types
+// ============================================
 
 export type JobType = 'pdf_extraction' | 'shopware_upload' | 'xentral_upload' | 'sku_regeneration';
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -47,34 +19,10 @@ export interface Job {
     updated_at?: string;
 }
 
-// Product types
-export interface Product {
-    sku: string;
-    ean?: string;
-    product_code?: string;
-    supplier: string;
-    gender: string;
-    season: string;
-    brand: string;
-    name: string;
-    original_price: string;
-    sell_price: string;
-    color: string;
-    size: string;
-    quantity: string;
-}
+// ============================================
+// API Response Types
+// ============================================
 
-export interface ExtractedProduct {
-    identifiers: string[];
-    quantity?: string;
-    size?: string;
-    color?: string;
-    price?: string;
-    name?: string;
-    raw_text?: string;
-}
-
-// API response types
 export interface ApiResponse<T> {
     success: boolean;
     data?: T;
@@ -125,7 +73,6 @@ export interface DraftOrder {
     status: DraftOrderStatus;
     shop_system: ShopSystem;
     template_id?: string;
-    brand_id?: string;
     source_file_name?: string;
     source_job_id?: string;
     user_id: string;
@@ -134,7 +81,6 @@ export interface DraftOrder {
     updated_at: string;
     // Joined relations
     line_items?: DraftLineItem[];
-    brand?: Supplier;
 }
 
 export interface DraftLineItem {
@@ -157,23 +103,11 @@ export interface ValidationError {
 }
 
 // ============================================
-// Product Normalization Types
+// Product Types
 // ============================================
 
-/** Raw product data from GPT Vision extraction */
-export interface RawExtractedProduct {
-    name: string;
-    color: string;
-    size: string;
-    price: string;
-    quantity: string;
-    ean: string;
-    sku: string;
-    articleNumber: string;
-    styleCode: string;
-    designerCode: string;
-    brand: string;
-}
+/** Raw product data from GPT Vision extraction - dynamic based on profile */
+export type RawExtractedProduct = Record<string, string>;
 
 /** Normalized product ready for shop export */
 export interface NormalizedProduct {
@@ -219,8 +153,7 @@ export interface NormalizedProduct {
 export interface ProcessingContext {
     shop_system: ShopSystem;
     template?: MappingTemplate;
-    brand?: Supplier;
-    supplier_name?: string;
+    brand_name?: string;
     user_id: string;
     source_job_id?: string;
     extraction_profile_id?: string;
@@ -267,13 +200,32 @@ export interface SkuTemplate {
     updated_at?: string;
 }
 
+// ============================================
+// Code Lookups (Dynamic Lookup Types)
+// ============================================
+
 export interface CodeLookup {
     id: string;
-    type: 'brand' | 'category' | 'colour' | 'gender' | 'season_type';
+    type: string;  // Dynamic: brand, category, colour, gender, season_type, + custom types
     name: string;
     code: string;
     aliases?: string[];
     sort_order?: number;
+    tenant_id?: string;
     created_at?: string;
 }
 
+// Processing profile type for database
+export interface ProcessingProfile {
+    id: string;
+    tenant_id: string;
+    name: string;
+    description?: string;
+    fields: FieldDefinition[];
+    prompt_additions?: string;
+    sku_template?: string;
+    generate_sku: boolean;
+    is_default: boolean;
+    created_at?: string;
+    updated_at?: string;
+}

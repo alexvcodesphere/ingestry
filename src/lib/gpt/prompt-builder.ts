@@ -1,61 +1,81 @@
 /**
  * GPT Prompt Builder
- * Dynamically generates GPT Vision prompts from extraction profiles.
+ * Dynamically generates GPT Vision prompts from processing profiles.
  */
 
-import type { FieldDefinition, ExtractionProfile } from '@/types';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Get the default extraction profile
+ * Field configuration from processing profile
  */
-export async function getDefaultProfile(): Promise<ExtractionProfile | null> {
+interface FieldConfig {
+    key: string;
+    label: string;
+    required?: boolean;
+    normalize_with?: string;
+}
+
+/**
+ * Processing profile from database
+ */
+export interface ProcessingProfile {
+    id: string;
+    tenant_id: string;
+    name: string;
+    fields: FieldConfig[];
+    sku_template?: string;
+    generate_sku?: boolean;
+    is_default: boolean;
+}
+
+/**
+ * Get processing profile by ID
+ */
+export async function getProcessingProfile(profileId?: string): Promise<ProcessingProfile | null> {
     const supabase = await createClient();
 
+    if (profileId) {
+        const { data, error } = await supabase
+            .from('processing_profiles')
+            .select('*')
+            .eq('id', profileId)
+            .single();
+
+        if (error || !data) {
+            console.error('Failed to get profile:', error);
+            return null;
+        }
+        return data as ProcessingProfile;
+    }
+
+    // Get default profile
     const { data, error } = await supabase
-        .from('extraction_profiles')
+        .from('processing_profiles')
         .select('*')
         .eq('is_default', true)
         .single();
 
     if (error || !data) {
-        console.error('Failed to get default profile:', error);
-        return null;
+        // Fallback: get any profile
+        const { data: anyProfile } = await supabase
+            .from('processing_profiles')
+            .select('*')
+            .limit(1)
+            .single();
+
+        return anyProfile as ProcessingProfile || null;
     }
 
-    return data as ExtractionProfile;
+    return data as ProcessingProfile;
 }
 
 /**
- * Get extraction profile by ID
+ * Build the system prompt from profile fields
  */
-export async function getProfile(profileId: string): Promise<ExtractionProfile | null> {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-        .from('extraction_profiles')
-        .select('*')
-        .eq('id', profileId)
-        .single();
-
-    if (error || !data) {
-        return null;
-    }
-
-    return data as ExtractionProfile;
-}
-
-/**
- * Build the system prompt for GPT Vision based on field definitions
- */
-export function buildSystemPrompt(fields: FieldDefinition[], additionalInstructions?: string): string {
+export function buildSystemPrompt(fields: FieldConfig[]): string {
     const fieldDescriptions = fields.map(f => {
         let desc = `- ${f.key}: ${f.label}`;
-        if (f.instructions) desc += ` (${f.instructions})`;
         if (f.required) desc += ' [REQUIRED]';
-        if (f.type === 'enum' && f.enumValues) {
-            desc += ` - allowed values: ${f.enumValues.join(', ')}`;
-        }
         return desc;
     }).join('\n');
 
@@ -67,7 +87,7 @@ export function buildSystemPrompt(fields: FieldDefinition[], additionalInstructi
 ${fieldDescriptions}
 
 ## Output Format
-Return a JSON object with an array of products. Each product should have the following structure:
+Return a JSON object with an array of products. Each product should have this structure:
 ${JSON.stringify(jsonSchema, null, 2)}
 
 ## Important Rules
@@ -76,26 +96,17 @@ ${JSON.stringify(jsonSchema, null, 2)}
 3. For prices, include the currency symbol if visible
 4. For quantities, extract the numeric value
 5. Be precise - extract exactly what is shown, don't infer or guess
-6. Return valid JSON only${additionalInstructions ? `\n\n## Additional Instructions\n${additionalInstructions}` : ''}`;
+6. Return valid JSON only`;
 }
 
 /**
  * Build JSON schema example from field definitions
  */
-function buildJsonSchema(fields: FieldDefinition[]): object {
+function buildJsonSchema(fields: FieldConfig[]): object {
     const example: Record<string, string> = {};
 
     for (const field of fields) {
-        switch (field.type) {
-            case 'number':
-                example[field.key] = '1';
-                break;
-            case 'currency':
-                example[field.key] = '€99.00';
-                break;
-            default:
-                example[field.key] = field.defaultValue || '';
-        }
+        example[field.key] = '';
     }
 
     return {
@@ -106,21 +117,15 @@ function buildJsonSchema(fields: FieldDefinition[]): object {
 /**
  * Get the prompt for a profile (fetches from DB if needed)
  */
-export async function getPromptForProfile(profileId?: string): Promise<string> {
-    let profile: ExtractionProfile | null;
+export async function getPromptForProfile(profileId?: string): Promise<{ prompt: string; profile: ProcessingProfile | null }> {
+    const profile = await getProcessingProfile(profileId);
 
-    if (profileId) {
-        profile = await getProfile(profileId);
-    } else {
-        profile = await getDefaultProfile();
-    }
-
-    if (!profile) {
+    if (!profile || !profile.fields || profile.fields.length === 0) {
         // Fallback to hardcoded default
-        return getDefaultPrompt();
+        return { prompt: getDefaultPrompt(), profile: null };
     }
 
-    return buildSystemPrompt(profile.fields, profile.prompt_additions);
+    return { prompt: buildSystemPrompt(profile.fields), profile };
 }
 
 /**
@@ -155,3 +160,6 @@ Important:
 - Include currency symbols with prices
 - Be precise, don't infer`;
 }
+
+// Re-export the FieldConfig type for other modules
+export type { FieldConfig };

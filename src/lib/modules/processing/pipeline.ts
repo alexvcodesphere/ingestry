@@ -13,6 +13,7 @@ import type {
     LineItemStatus,
     ValidationError,
 } from '@/types';
+import type { ProcessingProfile } from '@/lib/gpt/prompt-builder';
 import { normalizeProducts } from './normalizer';
 import { enrichProducts, validateProduct } from './enricher';
 import { createClient } from '@/lib/supabase/server';
@@ -21,28 +22,38 @@ import { createClient } from '@/lib/supabase/server';
  * Process raw GPT extraction results through the full pipeline
  * @param rawProducts Products extracted by GPT Vision
  * @param context Processing context (shop system, template, brand, etc.)
+ * @param profile Optional processing profile for normalization and SKU generation
  * @returns Created draft order with line items
  */
 export async function processOrder(
     rawProducts: RawExtractedProduct[],
-    context: ProcessingContext
+    context: ProcessingContext,
+    profile?: ProcessingProfile | null
 ): Promise<DraftOrder> {
     console.log(`[Pipeline] Processing ${rawProducts.length} products`);
-    console.log(`[Pipeline] Context: shop=${context.shop_system}, brand=${context.brand?.brand_name || 'none'}`);
+    console.log(`[Pipeline] Context: shop=${context.shop_system}, brand=${context.brand_name || 'none'}`);
+    if (profile) {
+        console.log(`[Pipeline] Using profile: ${profile.name}`);
+    }
 
-    // Step 1: Normalize products
+    // Step 1: Normalize products (using profile for field normalization)
     console.log('[Pipeline] Step 1: Normalizing products...');
-    const normalized = await normalizeProducts(rawProducts, context);
+    const normalized = await normalizeProducts(rawProducts, context, profile);
     console.log(`[Pipeline] Normalized ${normalized.length} products`);
 
-    // Step 2: Enrich with categories
-    console.log('[Pipeline] Step 2: Enriching with categories...');
-    const enriched = enrichProducts(normalized, context.template);
-    console.log('[Pipeline] Enrichment complete');
+    // Step 2: Enrich with categories (skip if using a profile - profile defines the fields)
+    let finalProducts = normalized;
+    if (!profile) {
+        console.log('[Pipeline] Step 2: Enriching with categories...');
+        finalProducts = enrichProducts(normalized, context.template);
+        console.log('[Pipeline] Enrichment complete');
+    } else {
+        console.log('[Pipeline] Step 2: Skipping enrichment (using profile fields)');
+    }
 
     // Step 3: Create draft order with line items
     console.log('[Pipeline] Step 3: Creating draft order...');
-    const draftOrder = await createDraftOrder(rawProducts, enriched, context);
+    const draftOrder = await createDraftOrder(rawProducts, finalProducts, context, profile);
     console.log(`[Pipeline] Draft order created: ${draftOrder.id}`);
 
     return draftOrder;
@@ -54,23 +65,33 @@ export async function processOrder(
 async function createDraftOrder(
     rawProducts: RawExtractedProduct[],
     normalizedProducts: NormalizedProduct[],
-    context: ProcessingContext
+    context: ProcessingContext,
+    profile?: ProcessingProfile | null
 ): Promise<DraftOrder> {
     const supabase = await createClient();
+
+    // Get tenant_id for the current user
+    const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
+    if (!tenantId) {
+        throw new Error('Failed to determine tenant for draft order');
+    }
 
     // Create the draft order
     const { data: order, error: orderError } = await supabase
         .from('draft_orders')
         .insert({
+            tenant_id: tenantId,
             status: 'pending_review',
             shop_system: context.shop_system,
             template_id: context.template?.id || null,
-            brand_id: context.brand?.id || null,
             source_job_id: context.source_job_id || null,
             user_id: context.user_id,
             metadata: {
                 options: context.options,
                 product_count: normalizedProducts.length,
+                profile_id: profile?.id || null,
+                profile_name: profile?.name || null,
             },
         })
         .select()

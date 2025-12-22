@@ -1,11 +1,12 @@
 /**
  * Product Normalizer Module
  * Transforms raw GPT Vision output into standardized product format.
- * Handles color normalization, SKU generation, price parsing, and size standardization.
+ * Handles normalization using lookup types, SKU generation, price parsing, and size standardization.
  */
 
 import type { RawExtractedProduct, NormalizedProduct, ProcessingContext } from '@/types';
-import { normalizeColor } from '@/lib/services/color-normalizer';
+import type { ProcessingProfile, FieldConfig } from '@/lib/gpt/prompt-builder';
+import { normalizeUsingLookup } from '@/lib/services/lookup-normalizer';
 import { generateSku } from '@/lib/services/sku-generator';
 
 /**
@@ -14,12 +15,35 @@ import { generateSku } from '@/lib/services/sku-generator';
 export async function normalizeProduct(
     raw: RawExtractedProduct,
     index: number,
-    context: ProcessingContext
+    context: ProcessingContext,
+    profile?: ProcessingProfile | null
 ): Promise<NormalizedProduct> {
-    // Parse and normalize color
-    const colorNormalized = context.options?.normalize_colors !== false
-        ? await normalizeColor(raw.color)
-        : raw.color;
+    // Apply normalizations based on profile field configurations
+    let colorNormalized = raw.color;
+    const normalizedValues: Record<string, string> = {};
+    // Cast raw to record for accessing custom fields
+    const rawAsRecord = raw as unknown as Record<string, string>;
+
+    if (profile?.fields) {
+        for (const field of profile.fields) {
+            if (field.normalize_with) {
+                const rawValue = (raw as unknown as Record<string, unknown>)[field.key];
+                if (typeof rawValue === 'string' && rawValue) {
+                    const normalized = await normalizeUsingLookup(rawValue, field.normalize_with);
+                    normalizedValues[field.key] = normalized;
+
+                    // Special handling for color field
+                    if (field.key === 'color') {
+                        colorNormalized = normalized;
+                    }
+                }
+            }
+        }
+    } else if (context.options?.normalize_colors !== false) {
+        // Fallback: use legacy color normalization
+        const { normalizeColor } = await import('@/lib/services/color-normalizer');
+        colorNormalized = await normalizeColor(raw.color);
+    }
 
     // Parse quantity (default to 1)
     const quantity = parseQuantity(raw.quantity);
@@ -31,23 +55,75 @@ export async function normalizeProduct(
     const sizeNormalized = normalizeSize(raw.size);
 
     // Determine brand
-    const brand = raw.brand || context.brand?.brand_name || context.supplier_name || 'Unknown';
+    const brand = raw.brand || context.brand_name || 'Unknown';
 
-    // Generate SKU if enabled and not already present
+    // Generate SKU only if:
+    // - Using a profile with generate_sku enabled, OR
+    // - No profile and auto_generate_sku is enabled
     let sku = raw.sku;
-    if ((!sku || sku.trim() === '') && context.options?.auto_generate_sku !== false) {
+    const shouldGenerateSku = profile
+        ? profile.generate_sku === true
+        : context.options?.auto_generate_sku !== false;
+
+    if ((!sku || sku.trim() === '') && shouldGenerateSku) {
         sku = await generateSku({
             brand,
             season: detectSeason(),
-            category: '',
+            category: normalizedValues['category'] || '',
             gender: detectGender(raw.name),
             colour: colorNormalized || raw.color,
             productNumber: index + 1,
             size: sizeNormalized || raw.size,
-        });
+            custom: { ...rawAsRecord, ...normalizedValues },
+        }, profile?.sku_template);
     }
 
-    return {
+    // If we have a profile, only output the fields defined in it
+    if (profile?.fields && profile.fields.length > 0) {
+        console.log(`[Normalizer] Using profile fields: ${profile.fields.map(f => f.key).join(', ')}`);
+        console.log(`[Normalizer] Generate SKU: ${profile.generate_sku}`);
+        console.log(`[Normalizer] Raw data keys: ${Object.keys(rawAsRecord).join(', ')}`);
+
+        const result: Record<string, unknown> = {};
+
+        // Only add SKU if generate_sku is enabled
+        if (profile.generate_sku && sku) {
+            result.sku = sku;
+        }
+
+        for (const field of profile.fields) {
+            const key = field.key;
+            const rawValue = rawAsRecord[key];
+
+            // Try to get the value from raw data, normalized values, or computed values
+            if (key === 'color') {
+                result.color = raw.color || rawValue || '';
+                result.color_normalized = colorNormalized;
+            } else if (key === 'price') {
+                result.price = price;
+                result.currency = currency;
+            } else if (key === 'quantity') {
+                result.quantity = quantity;
+            } else if (key === 'size') {
+                result.size = raw.size || rawValue || '';
+                result.size_normalized = sizeNormalized;
+            } else if (key === 'brand') {
+                result.brand = brand;
+            } else if (key === 'name') {
+                result.name = raw.name || rawValue || '';
+            } else {
+                // Custom field: try normalized value first, then raw value
+                result[key] = normalizedValues[key] || rawValue || '';
+                console.log(`[Normalizer] Custom field ${key}: ${result[key]}`);
+            }
+        }
+
+        console.log(`[Normalizer] Result keys: ${Object.keys(result).join(', ')}`);
+        return result as unknown as NormalizedProduct;
+    }
+
+    // Fallback: Build full normalized product (no profile)
+    const baseProduct = {
         // Core identifiers
         sku: sku || `TEMP-${String(index + 1).padStart(5, '0')}`,
         ean: raw.ean || undefined,
@@ -58,7 +134,7 @@ export async function normalizeProduct(
         // Product info
         name: raw.name,
         brand,
-        supplier: context.supplier_name || context.brand?.supplier_name,
+        supplier: context.brand_name,
 
         // Attributes
         color: raw.color,
@@ -74,10 +150,23 @@ export async function normalizeProduct(
         quantity,
 
         // Placeholders for enrichment
-        category: undefined,
+        category: normalizedValues['category'] || undefined,
         gender: detectGender(raw.name),
         season: detectSeason(),
     };
+
+    // Merge in any additional raw fields not in the standard structure
+    const extraFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawAsRecord)) {
+        if (!(key in baseProduct) && value !== undefined && value !== '') {
+            extraFields[key] = value;
+        }
+    }
+
+    return {
+        ...baseProduct,
+        ...extraFields,
+    } as NormalizedProduct;
 }
 
 /**
@@ -85,12 +174,13 @@ export async function normalizeProduct(
  */
 export async function normalizeProducts(
     rawProducts: RawExtractedProduct[],
-    context: ProcessingContext
+    context: ProcessingContext,
+    profile?: ProcessingProfile | null
 ): Promise<NormalizedProduct[]> {
     const normalized: NormalizedProduct[] = [];
 
     for (let i = 0; i < rawProducts.length; i++) {
-        const product = await normalizeProduct(rawProducts[i], i, context);
+        const product = await normalizeProduct(rawProducts[i], i, context, profile);
         normalized.push(product);
     }
 

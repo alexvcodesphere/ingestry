@@ -23,8 +23,7 @@ export async function getDraftOrder(orderId: string): Promise<DraftOrder | null>
         .from('draft_orders')
         .select(`
             *,
-            line_items:draft_line_items(*),
-            brand:suppliers(*)
+            line_items:draft_line_items(*)
         `)
         .eq('id', orderId)
         .single();
@@ -49,10 +48,7 @@ export async function getDraftOrders(options?: {
 
     let query = supabase
         .from('draft_orders')
-        .select(`
-            *,
-            brand:suppliers(brand_name)
-        `, { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
     if (options?.status) {

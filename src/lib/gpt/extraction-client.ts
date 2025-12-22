@@ -9,19 +9,8 @@ export interface GPTExtractionResult {
     usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
-export interface GPTExtractedProduct {
-    name: string;
-    color: string;
-    size: string;
-    price: string;
-    quantity: string;
-    ean: string;
-    sku: string;
-    articleNumber: string;
-    styleCode: string;
-    designerCode: string;
-    brand: string;
-}
+// Dynamic product type - fields come from processing profile
+export type GPTExtractedProduct = Record<string, string>;
 
 const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 
@@ -57,9 +46,13 @@ Return format: {"products":[{"name":"","color":"","size":"","price":"","quantity
 /**
  * Extract products from PDF using GPT-4o Vision via Responses API
  * Sends the PDF directly as base64 - no conversion needed
+ * @param pdfBuffer PDF file as Buffer
+ * @param systemPrompt Optional custom system prompt from processing profile
+ * @param options Additional options like model selection
  */
 export async function extractWithGPT(
     pdfBuffer: Buffer,
+    systemPrompt?: string,
     options: { model?: string } = {}
 ): Promise<GPTExtractionResult> {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -98,7 +91,7 @@ export async function extractWithGPT(
                 ],
             },
         ],
-        instructions: EXTRACTION_INSTRUCTIONS,
+        instructions: systemPrompt || EXTRACTION_INSTRUCTIONS,
         text: {
             format: {
                 type: "json_object",
@@ -167,19 +160,14 @@ export async function extractWithGPT(
                 ? parsed.products
                 : [];
 
-        products = productArray.map((p: Record<string, unknown>) => ({
-            name: String(p.name || ""),
-            color: String(p.color || ""),
-            size: String(p.size || ""),
-            price: String(p.price || ""),
-            quantity: String(p.quantity || ""),
-            ean: String(p.ean || ""),
-            sku: String(p.sku || ""),
-            articleNumber: String(p.articleNumber || ""),
-            styleCode: String(p.styleCode || ""),
-            designerCode: String(p.designerCode || ""),
-            brand: String(p.brand || ""),
-        }));
+        products = productArray.map((p: Record<string, unknown>) => {
+            // Pass through all fields from GPT response dynamically
+            const product: Record<string, string> = {};
+            for (const [key, value] of Object.entries(p)) {
+                product[key] = String(value || "");
+            }
+            return product;
+        });
     } catch (parseError) {
         console.error("[GPT Vision] Failed to parse response:", parseError);
         console.error("[GPT Vision] Raw response:", rawResponse);

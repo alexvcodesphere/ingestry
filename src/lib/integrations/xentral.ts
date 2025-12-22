@@ -1,4 +1,4 @@
-import type { Product } from "@/types";
+import type { NormalizedProduct } from "@/types";
 
 const MOCK_MODE = process.env.MOCK_EXTERNAL_APIS === "true";
 
@@ -13,7 +13,7 @@ export interface XentralUploadResult {
  * Upload products to Xentral ERP
  */
 export async function uploadToXentral(
-    products: Product[]
+    products: NormalizedProduct[]
 ): Promise<XentralUploadResult[]> {
     if (MOCK_MODE) {
         console.log("[MOCK] Uploading to Xentral:", products.length, "products");
@@ -50,7 +50,7 @@ export async function uploadToXentral(
                 body: JSON.stringify({
                     nummer: product.sku,
                     name_de: product.name,
-                    hersteller: product.supplier,
+                    hersteller: product.brand,
                     // Add more fields as needed
                 }),
             });
@@ -86,7 +86,7 @@ export async function uploadToXentral(
  */
 export async function updateInXentral(
     xentralId: string,
-    updates: Partial<Product>
+    updates: Partial<NormalizedProduct>
 ): Promise<XentralUploadResult> {
     if (MOCK_MODE) {
         console.log("[MOCK] Updating in Xentral:", xentralId, updates);

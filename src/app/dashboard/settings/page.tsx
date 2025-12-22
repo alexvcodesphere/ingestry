@@ -11,22 +11,16 @@ import { Button } from "@/components/ui/button";
 
 const configSections = [
     {
-        title: "SKU Templates",
-        description: "Define how product SKUs are generated using variable placeholders",
-        href: "/dashboard/settings/templates",
-        icon: "🏷️",
+        title: "Processing Profiles",
+        description: "Configure extraction fields, normalization, and SKU generation",
+        href: "/dashboard/settings/processing",
+        icon: "⚙️",
     },
     {
         title: "Code Lookups",
         description: "Manage brand, category, and colour code mappings",
         href: "/dashboard/settings/lookups",
         icon: "📋",
-    },
-    {
-        title: "Extraction Profiles",
-        description: "Configure which fields GPT Vision extracts from documents",
-        href: "/dashboard/settings/profiles",
-        icon: "📄",
     },
 ];
 
@@ -88,10 +82,10 @@ export default function SettingsPage() {
                                 <span className="font-medium">{integration.name}</span>
                                 <span
                                     className={`text-sm px-2 py-1 rounded ${integration.status === "active"
-                                            ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
-                                            : integration.status === "mock"
-                                                ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300"
-                                                : "bg-muted text-muted-foreground"
+                                        ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
+                                        : integration.status === "mock"
+                                            ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300"
+                                            : "bg-muted text-muted-foreground"
                                         }`}
                                 >
                                     {integration.statusLabel}

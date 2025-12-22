@@ -2,17 +2,30 @@
 
 /**
  * New Order Page
- * Wizard flow for creating a new order: upload file → select shop system → select brand → process
+ * Wizard flow for creating a new order: upload file → select profile → process
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { ShopSystem, Supplier } from "@/types";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import type { ShopSystem } from "@/types";
 import { createClient } from "@/lib/supabase/client";
+
+interface ProcessingProfile {
+    id: string;
+    name: string;
+    is_default: boolean;
+}
 
 type WizardStep = "upload" | "configure" | "processing";
 
@@ -27,25 +40,41 @@ export default function NewOrderPage() {
     const [step, setStep] = useState<WizardStep>("upload");
     const [file, setFile] = useState<File | null>(null);
     const [shopSystem, setShopSystem] = useState<ShopSystem>("shopware");
-    const [brandId, setBrandId] = useState<string>("");
-    const [brands, setBrands] = useState<Supplier[]>([]);
-    const [brandSearch, setBrandSearch] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState<string>("");
 
-    // Fetch brands when entering configure step
-    const fetchBrands = useCallback(async () => {
-        const supabase = createClient();
-        const { data } = await supabase
-            .from("suppliers")
-            .select("*")
-            .order("brand_name");
+    // Processing profile state
+    const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
+    const [selectedProfileId, setSelectedProfileId] = useState<string>("");
 
-        if (data) {
-            setBrands(data);
-        }
+    // Fetch profiles on mount
+    useEffect(() => {
+        const fetchProfiles = async () => {
+            const supabase = createClient();
+            const { data } = await supabase
+                .from("processing_profiles")
+                .select("id, name, is_default")
+                .order("is_default", { ascending: false });
+
+            if (data && data.length > 0) {
+                setProfiles(data);
+                // Select default profile
+                const defaultProfile = data.find(p => p.is_default) || data[0];
+                setSelectedProfileId(defaultProfile.id);
+            }
+        };
+        fetchProfiles();
     }, []);
+
+    // Move to configure step
+    const handleContinueToConfig = () => {
+        if (!file) {
+            setError("Please select a file first");
+            return;
+        }
+        setStep("configure");
+    };
 
     // Handle file selection
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,16 +93,6 @@ export default function NewOrderPage() {
         }
     };
 
-    // Move to configure step
-    const handleContinueToConfig = () => {
-        if (!file) {
-            setError("Please select a file first");
-            return;
-        }
-        fetchBrands();
-        setStep("configure");
-    };
-
     // Submit the order for processing
     const handleSubmit = async () => {
         if (!file) {
@@ -90,8 +109,8 @@ export default function NewOrderPage() {
             const formData = new FormData();
             formData.append("file", file);
             formData.append("shop_system", shopSystem);
-            if (brandId) {
-                formData.append("brand_id", brandId);
+            if (selectedProfileId) {
+                formData.append("profile_id", selectedProfileId);
             }
 
             setProgress("Processing with GPT Vision...");
@@ -120,13 +139,6 @@ export default function NewOrderPage() {
         }
     };
 
-    // Filter brands based on search
-    const filteredBrands = brands.filter(
-        (b) =>
-            b.brand_name.toLowerCase().includes(brandSearch.toLowerCase()) ||
-            b.supplier_name.toLowerCase().includes(brandSearch.toLowerCase())
-    );
-
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             {/* Header */}
@@ -143,10 +155,10 @@ export default function NewOrderPage() {
                     <div key={s} className="flex items-center">
                         <div
                             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step === s
-                                    ? "bg-primary text-primary-foreground"
-                                    : ["upload", "configure", "processing"].indexOf(step) > i
-                                        ? "bg-primary/20 text-primary"
-                                        : "bg-muted text-muted-foreground"
+                                ? "bg-primary text-primary-foreground"
+                                : ["upload", "configure", "processing"].indexOf(step) > i
+                                    ? "bg-primary/20 text-primary"
+                                    : "bg-muted text-muted-foreground"
                                 }`}
                         >
                             {i + 1}
@@ -154,8 +166,8 @@ export default function NewOrderPage() {
                         {i < 2 && (
                             <div
                                 className={`w-12 h-0.5 ${["upload", "configure", "processing"].indexOf(step) > i
-                                        ? "bg-primary"
-                                        : "bg-muted"
+                                    ? "bg-primary"
+                                    : "bg-muted"
                                     }`}
                             />
                         )}
@@ -240,10 +252,33 @@ export default function NewOrderPage() {
                     <CardHeader>
                         <CardTitle>Configure Processing</CardTitle>
                         <CardDescription>
-                            Select the target shop system and brand
+                            Select the target shop system and processing options
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        {/* Processing Profile Selection */}
+                        <div className="space-y-2">
+                            <Label>Processing Profile</Label>
+                            <Select
+                                value={selectedProfileId}
+                                onValueChange={setSelectedProfileId}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select a profile" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {profiles.map((profile) => (
+                                        <SelectItem key={profile.id} value={profile.id}>
+                                            {profile.is_default && "⭐ "}{profile.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                Determines which fields to extract and how to generate SKUs
+                            </p>
+                        </div>
+
                         {/* Shop System Selection */}
                         <div className="space-y-2">
                             <Label>Target Shop System</Label>
@@ -254,49 +289,13 @@ export default function NewOrderPage() {
                                         type="button"
                                         onClick={() => setShopSystem(system.value)}
                                         className={`p-4 rounded-lg border-2 text-left transition-colors ${shopSystem === system.value
-                                                ? "border-primary bg-primary/5"
-                                                : "border-muted hover:border-muted-foreground/50"
+                                            ? "border-primary bg-primary/5"
+                                            : "border-muted hover:border-muted-foreground/50"
                                             }`}
                                     >
                                         <p className="font-medium">{system.label}</p>
                                         <p className="text-xs text-muted-foreground">
                                             {system.description}
-                                        </p>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Brand Selection */}
-                        <div className="space-y-2">
-                            <Label>Brand / Supplier (Optional)</Label>
-                            <Input
-                                placeholder="Search brands..."
-                                value={brandSearch}
-                                onChange={(e) => setBrandSearch(e.target.value)}
-                            />
-                            <div className="max-h-48 overflow-auto border rounded-lg">
-                                <button
-                                    type="button"
-                                    onClick={() => setBrandId("")}
-                                    className={`w-full p-3 text-left hover:bg-muted border-b ${!brandId ? "bg-primary/5" : ""
-                                        }`}
-                                >
-                                    <p className="font-medium text-muted-foreground">
-                                        No specific brand
-                                    </p>
-                                </button>
-                                {filteredBrands.map((brand) => (
-                                    <button
-                                        key={brand.id}
-                                        type="button"
-                                        onClick={() => setBrandId(brand.id)}
-                                        className={`w-full p-3 text-left hover:bg-muted border-b ${brandId === brand.id ? "bg-primary/5" : ""
-                                            }`}
-                                    >
-                                        <p className="font-medium">{brand.brand_name}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {brand.supplier_name}
                                         </p>
                                     </button>
                                 ))}

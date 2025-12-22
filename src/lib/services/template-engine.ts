@@ -108,12 +108,18 @@ export async function resolveVariable(
             value = String(context.year || new Date().getFullYear() % 100);
             break;
         default:
-            // Check custom fields
-            if (variable.name.startsWith('custom.')) {
+            // Try as a dynamic lookup type (custom types like material, collection, etc.)
+            // First check if there's a lookup for this type
+            const lookupValue = await lookupCode(variable.name, context.custom?.[variable.name] || '', lookups);
+            if (lookupValue !== '00') {
+                value = lookupValue;
+            } else if (variable.name.startsWith('custom.')) {
+                // Legacy custom.* syntax for direct values
                 const key = variable.name.slice(7);
                 value = context.custom?.[key] || '';
             } else {
-                value = '';
+                // Check custom context for the value directly
+                value = context.custom?.[variable.name] || '';
             }
     }
 
@@ -304,9 +310,13 @@ export async function getDefaultTemplate(): Promise<string> {
 }
 
 /**
- * Generate SKU using the default template
+ * Generate SKU using a template (defaults to stored template if not provided)
  */
-export async function generateSkuFromTemplate(context: TemplateContext): Promise<string> {
-    const template = await getDefaultTemplate();
+export async function generateSkuFromTemplate(
+    context: TemplateContext,
+    templateOverride?: string
+): Promise<string> {
+    const template = templateOverride || await getDefaultTemplate();
     return evaluateTemplate(template, context);
 }
+

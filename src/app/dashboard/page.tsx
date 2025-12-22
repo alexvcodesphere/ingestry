@@ -28,7 +28,7 @@ function LiveTimer({ startTime }: { startTime: Date }) {
 
     const mins = Math.floor(elapsed / 60);
     const secs = elapsed % 60;
-    return <span>{mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}</span>;
+    return <span className="tabular-nums">{mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}</span>;
 }
 
 // Duration display
@@ -36,23 +36,84 @@ function Duration({ start, end }: { start: Date; end: Date }) {
     const durationSecs = Math.floor((end.getTime() - start.getTime()) / 1000);
     const mins = Math.floor(durationSecs / 60);
     const secs = durationSecs % 60;
-    return <span>{mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}</span>;
+    return <span className="tabular-nums">{mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}</span>;
 }
 
-// Status badge component
+// Status badge component with more vibrant colors
 function StatusBadge({ status }: { status: string }) {
-    const config: Record<string, { label: string; className: string }> = {
-        completed: { label: "Completed", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
-        failed: { label: "Failed", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
-        processing: { label: "Processing", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
-        pending: { label: "Pending", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
+    const config: Record<string, { label: string; className: string; dotClass: string }> = {
+        completed: {
+            label: "Completed",
+            className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20",
+            dotClass: "bg-emerald-500"
+        },
+        failed: {
+            label: "Failed",
+            className: "bg-rose-50 text-rose-700 ring-1 ring-rose-600/20 dark:bg-rose-500/10 dark:text-rose-400 dark:ring-rose-500/20",
+            dotClass: "bg-rose-500"
+        },
+        processing: {
+            label: "Processing",
+            className: "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/20",
+            dotClass: "bg-amber-500 animate-pulse"
+        },
+        pending: {
+            label: "Pending",
+            className: "bg-slate-50 text-slate-600 ring-1 ring-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:ring-slate-500/20",
+            dotClass: "bg-slate-400"
+        },
     };
     const cfg = config[status] || config.pending;
     return (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.className}`}>
-            {status === "processing" && <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />}
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${cfg.className}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${cfg.dotClass}`} />
             {cfg.label}
         </span>
+    );
+}
+
+// Stat card component for consistent styling
+function StatCard({
+    title,
+    value,
+    subtitle,
+    icon,
+    accentColor = "primary"
+}: {
+    title: string;
+    value: number | string;
+    subtitle: string;
+    icon: string;
+    accentColor?: "primary" | "success" | "warning" | "danger";
+}) {
+    const colorClasses = {
+        primary: "from-primary/10 to-primary/5 text-primary",
+        success: "from-emerald-500/10 to-emerald-500/5 text-emerald-600 dark:text-emerald-400",
+        warning: "from-amber-500/10 to-amber-500/5 text-amber-600 dark:text-amber-400",
+        danger: "from-rose-500/10 to-rose-500/5 text-rose-600 dark:text-rose-400",
+    };
+
+    const iconBgClasses = {
+        primary: "bg-primary/10 text-primary",
+        success: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        danger: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    };
+
+    return (
+        <Card className="relative card-hover overflow-hidden border-0 shadow-sm">
+            <div className={`absolute inset-0 bg-gradient-to-br ${colorClasses[accentColor]} opacity-50`} />
+            <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBgClasses[accentColor]}`}>
+                    <span className="text-base">{icon}</span>
+                </div>
+            </CardHeader>
+            <CardContent className="relative">
+                <div className={`text-3xl font-bold tracking-tight ${colorClasses[accentColor].split(' ').pop()}`}>{value}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -84,7 +145,7 @@ export default function DashboardPage() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
             </div>
         );
     }
@@ -99,79 +160,79 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-                    <p className="text-muted-foreground">Process orders, validate products, push to shop systems</p>
+                    <p className="mt-1 text-muted-foreground">Process orders, validate products, push to shop systems</p>
                 </div>
                 <Link href="/dashboard/orders/new">
-                    <Button>New Order</Button>
+                    <Button className="gap-2 shadow-brand">
+                        <span>＋</span>
+                        New Order
+                    </Button>
                 </Link>
             </div>
 
             {/* Stats */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Orders</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{orderCount}</div>
-                        <p className="text-xs text-muted-foreground">Draft orders created</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Jobs</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{jobs.length}</div>
-                        <p className="text-xs text-muted-foreground">Processing jobs</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-600">{completedCount}</div>
-                        <p className="text-xs text-muted-foreground">Successfully processed</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Processing</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-yellow-600">{processingCount}</div>
-                        <p className="text-xs text-muted-foreground">Currently running</p>
-                    </CardContent>
-                </Card>
+                <StatCard
+                    title="Total Orders"
+                    value={orderCount}
+                    subtitle="Draft orders created"
+                    icon="📦"
+                    accentColor="primary"
+                />
+                <StatCard
+                    title="Total Jobs"
+                    value={jobs.length}
+                    subtitle="Processing jobs"
+                    icon="⚡"
+                    accentColor="primary"
+                />
+                <StatCard
+                    title="Completed"
+                    value={completedCount}
+                    subtitle="Successfully processed"
+                    icon="✓"
+                    accentColor="success"
+                />
+                <StatCard
+                    title="Processing"
+                    value={processingCount}
+                    subtitle="Currently running"
+                    icon="◎"
+                    accentColor="warning"
+                />
             </div>
 
             {/* Jobs Table */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Recent Jobs</CardTitle>
-                    <Button variant="ghost" size="sm" onClick={fetchData}>
+            <Card className="border-0 shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30 px-6">
+                    <div>
+                        <CardTitle className="text-lg">Recent Jobs</CardTitle>
+                        <p className="text-sm text-muted-foreground">Your latest processing jobs</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={fetchData} className="gap-2">
+                        <span className="text-xs">↻</span>
                         Refresh
                     </Button>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                     {jobs.length === 0 ? (
-                        <p className="text-center py-8 text-muted-foreground">
-                            No jobs yet. Upload an order to get started!
-                        </p>
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                                <span className="text-2xl">📄</span>
+                            </div>
+                            <p className="font-medium text-foreground">No jobs yet</p>
+                            <p className="mt-1 text-sm text-muted-foreground">Upload an order to get started!</p>
+                        </div>
                     ) : (
                         <Table>
                             <TableHeader>
-                                <TableRow>
-                                    <TableHead>Job ID</TableHead>
+                                <TableRow className="hover:bg-transparent">
+                                    <TableHead className="pl-6">Job ID</TableHead>
                                     <TableHead>File</TableHead>
                                     <TableHead>Type</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Created</TableHead>
-                                    <TableHead>Duration</TableHead>
+                                    <TableHead className="pr-6">Duration</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -182,15 +243,17 @@ export default function DashboardPage() {
                                     const fileName = (job.input as { fileName?: string })?.fileName;
 
                                     return (
-                                        <TableRow key={job.id}>
-                                            <TableCell className="font-mono text-xs text-muted-foreground">
-                                                {job.id.slice(0, 8)}
+                                        <TableRow key={job.id} className="group">
+                                            <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
+                                                <span className="rounded bg-muted px-1.5 py-0.5">{job.id.slice(0, 8)}</span>
                                             </TableCell>
                                             <TableCell className="font-medium max-w-[200px] truncate">
-                                                {fileName || "-"}
+                                                {fileName || "—"}
                                             </TableCell>
-                                            <TableCell className="capitalize text-sm">
-                                                {job.type.replace("_", " ")}
+                                            <TableCell>
+                                                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize">
+                                                    {job.type.replace("_", " ")}
+                                                </span>
                                             </TableCell>
                                             <TableCell>
                                                 <StatusBadge status={job.status} />
@@ -198,9 +261,12 @@ export default function DashboardPage() {
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {createdAt.toLocaleString()}
                                             </TableCell>
-                                            <TableCell className="text-sm tabular-nums">
+                                            <TableCell className="pr-6 text-sm text-muted-foreground">
                                                 {isRunning ? (
-                                                    <LiveTimer startTime={createdAt} />
+                                                    <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                        <LiveTimer startTime={createdAt} />
+                                                    </span>
                                                 ) : (
                                                     <Duration start={createdAt} end={updatedAt} />
                                                 )}
@@ -216,3 +282,4 @@ export default function DashboardPage() {
         </div>
     );
 }
+

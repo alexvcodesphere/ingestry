@@ -1,4 +1,4 @@
-import type { Product } from "@/types";
+import type { NormalizedProduct } from "@/types";
 
 const MOCK_MODE = process.env.MOCK_EXTERNAL_APIS === "true";
 
@@ -13,7 +13,7 @@ export interface ShopwareUploadResult {
  * Upload products to Shopware
  */
 export async function uploadToShopware(
-    products: Product[]
+    products: NormalizedProduct[]
 ): Promise<ShopwareUploadResult[]> {
     if (MOCK_MODE) {
         console.log("[MOCK] Uploading to Shopware:", products.length, "products");

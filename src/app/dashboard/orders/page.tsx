@@ -199,7 +199,6 @@ export default function OrdersPage() {
                                     <TableHead>Order ID</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Shop System</TableHead>
-                                    <TableHead>Brand</TableHead>
                                     <TableHead>Created</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
@@ -215,9 +214,6 @@ export default function OrdersPage() {
                                         </TableCell>
                                         <TableCell>
                                             {getShopSystemBadge(order.shop_system)}
-                                        </TableCell>
-                                        <TableCell>
-                                            {(order.brand as { brand_name?: string })?.brand_name || "-"}
                                         </TableCell>
                                         <TableCell>
                                             {new Date(order.created_at).toLocaleDateString()}

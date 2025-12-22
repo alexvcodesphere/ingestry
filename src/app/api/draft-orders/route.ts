@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getDraftOrders } from '@/lib/services/draft-order.service';
 import { processOrder } from '@/lib/modules/processing/pipeline';
 import { extractWithGPT } from '@/lib/gpt/extraction-client';
+import { getPromptForProfile } from '@/lib/gpt/prompt-builder';
 import type { DraftOrderStatus, ShopSystem, RawExtractedProduct } from '@/types';
 
 /**
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         const file = formData.get('file') as File | null;
         const shopSystem = formData.get('shop_system') as ShopSystem;
         const brandId = formData.get('brand_id') as string | null;
-        const templateId = formData.get('template_id') as string | null;
+        const profileId = formData.get('profile_id') as string | null;
 
         // Validate required fields
         if (!file) {
@@ -93,16 +94,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get brand info if provided
-        let brand = undefined;
-        if (brandId) {
-            const { data: brandData } = await supabase
-                .from('suppliers')
-                .select('*')
-                .eq('id', brandId)
-                .single();
-            brand = brandData || undefined;
-        }
+        // Brand is no longer fetched separately - it's handled via code_lookups during normalization
+        const brand = undefined;
 
         // Create a job record first
         const { data: job, error: jobError } = await supabase
@@ -115,6 +108,7 @@ export async function POST(request: NextRequest) {
                     fileSize: file.size,
                     shopSystem,
                     brandId,
+                    profileId,
                 },
                 user_id: user.id,
             })
@@ -128,12 +122,19 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Get processing profile
+        const { prompt: systemPrompt, profile } = await getPromptForProfile(profileId || undefined);
+        console.log(`[API] Profile: ${profile?.name || 'fallback'}`);
+        console.log(`[API] Profile fields: ${profile?.fields?.map((f: { key: string }) => f.key).join(', ') || 'default'}`);
+        console.log(`[API] SKU template: ${profile?.sku_template || 'default'}`);
+        console.log(`[API] Prompt preview: ${systemPrompt.substring(0, 200)}...`);
+
         // Extract products using GPT Vision
         const fileBuffer = Buffer.from(await file.arrayBuffer());
         let rawProducts: RawExtractedProduct[];
 
         try {
-            const extraction = await extractWithGPT(fileBuffer);
+            const extraction = await extractWithGPT(fileBuffer, systemPrompt);
             rawProducts = extraction.products;
 
             // Update job with result count
@@ -162,15 +163,14 @@ export async function POST(request: NextRequest) {
         try {
             const draftOrder = await processOrder(rawProducts, {
                 shop_system: shopSystem,
-                brand,
                 user_id: user.id,
                 source_job_id: job.id,
                 options: {
                     auto_generate_sku: true,
                     normalize_colors: true,
-                    match_catalogue: false, // TODO: Enable when catalogue matching is integrated
+                    match_catalogue: false,
                 },
-            });
+            }, profile);
 
             // Update job as completed
             await supabase

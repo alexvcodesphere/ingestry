@@ -325,10 +325,10 @@ export default function OrderDetailPage() {
                             <dt className="text-muted-foreground">Last Updated</dt>
                             <dd>{new Date(order.updated_at).toLocaleString()}</dd>
                         </div>
-                        {order.brand && (
+                        {(order.metadata as { profile_name?: string })?.profile_name && (
                             <div>
-                                <dt className="text-muted-foreground">Brand</dt>
-                                <dd>{(order.brand as { brand_name?: string }).brand_name}</dd>
+                                <dt className="text-muted-foreground">Processing Profile</dt>
+                                <dd>{(order.metadata as { profile_name?: string }).profile_name}</dd>
                             </div>
                         )}
                     </dl>

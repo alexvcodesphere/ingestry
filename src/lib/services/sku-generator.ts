@@ -19,6 +19,7 @@ export interface SkuComponents {
     colour: string;
     productNumber: number;
     size?: string;
+    custom?: Record<string, string>; // Custom normalized values
 }
 
 export interface SkuMappings {
@@ -124,7 +125,7 @@ export async function getColourCode(colourName: string): Promise<string> {
  */
 export async function generateSku(
     components: SkuComponents,
-    _mappings?: SkuMappings // Kept for backwards compatibility but not used
+    templateOverride?: string // Optional template from processing profile
 ): Promise<string> {
     const context: TemplateContext = {
         brand: components.brand,
@@ -134,9 +135,10 @@ export async function generateSku(
         season: components.season,
         size: components.size,
         sequence: components.productNumber,
+        custom: components.custom,
     };
 
-    return generateSkuFromTemplate(context);
+    return generateSkuFromTemplate(context, templateOverride);
 }
 
 /**
