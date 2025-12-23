@@ -1,13 +1,16 @@
 /**
  * Product Enricher Module
  * Enriches normalized products with category assignments based on template rules.
- * Applies business logic for gender detection, category matching, and default values.
+ * 
+ * All category and gender detection is driven by template rules only.
+ * No hardcoded fallbacks - if no rules match, values remain empty.
  */
 
 import type { NormalizedProduct, MappingTemplate, CategoryRule } from '@/types';
 
 /**
  * Enrich a single product with category and additional metadata
+ * Uses ONLY template rules - no hardcoded detection
  */
 export function enrichProduct(
     product: NormalizedProduct,
@@ -15,23 +18,14 @@ export function enrichProduct(
 ): NormalizedProduct {
     const enriched = { ...product };
 
-    // Apply category rules from template
+    // Apply category rules from template (if provided)
     if (template?.category_rules) {
         const { category, gender } = matchCategory(product, template.category_rules);
         if (category) enriched.category = category;
         if (gender) enriched.gender = gender;
     }
 
-    // Fallback category detection if no template match
-    if (!enriched['category']) {
-        enriched['category'] = detectCategory(String(product['name'] || ''));
-    }
-
-    // Refine gender from category if still unisex
-    if (enriched['gender'] === 'unisex' && enriched['category']) {
-        enriched['gender'] = detectGenderFromCategory(String(enriched['category'])) || enriched['gender'];
-    }
-
+    // No fallback detection - values remain as extracted
     return enriched;
 }
 
@@ -68,88 +62,6 @@ function matchCategory(
     }
 
     return {};
-}
-
-/**
- * Detect category from product name using keyword matching
- */
-function detectCategory(name: string): string {
-    const lower = name.toLowerCase();
-
-    // Footwear
-    if (matchesAny(lower, ['shoe', 'sneaker', 'boot', 'sandal', 'loafer', 'heel', 'pump', 'slipper', 'trainer'])) {
-        return 'Footwear';
-    }
-
-    // Outerwear
-    if (matchesAny(lower, ['jacket', 'coat', 'blazer', 'parka', 'vest', 'cardigan', 'hoodie', 'anorak'])) {
-        return 'Outerwear';
-    }
-
-    // Tops
-    if (matchesAny(lower, ['shirt', 'blouse', 't-shirt', 'tee', 'top', 'sweater', 'pullover', 'polo', 'tank'])) {
-        return 'Tops';
-    }
-
-    // Bottoms
-    if (matchesAny(lower, ['pant', 'trouser', 'jean', 'short', 'skirt', 'chino', 'legging'])) {
-        return 'Bottoms';
-    }
-
-    // Dresses
-    if (matchesAny(lower, ['dress', 'gown', 'jumpsuit', 'romper'])) {
-        return 'Dresses';
-    }
-
-    // Accessories
-    if (matchesAny(lower, ['bag', 'belt', 'hat', 'scarf', 'wallet', 'watch', 'sunglasses', 'glove', 'cap'])) {
-        return 'Accessories';
-    }
-
-    // Bags specifically
-    if (matchesAny(lower, ['handbag', 'tote', 'clutch', 'backpack', 'purse', 'satchel'])) {
-        return 'Bags';
-    }
-
-    // Jewelry
-    if (matchesAny(lower, ['ring', 'necklace', 'bracelet', 'earring', 'jewelry', 'jewellery', 'pendant'])) {
-        return 'Jewelry';
-    }
-
-    // Knitwear
-    if (matchesAny(lower, ['knit', 'wool', 'cashmere', 'merino'])) {
-        return 'Knitwear';
-    }
-
-    // Swimwear
-    if (matchesAny(lower, ['swim', 'bikini', 'trunk', 'beach'])) {
-        return 'Swimwear';
-    }
-
-    return 'Other';
-}
-
-/**
- * Check if text matches any of the keywords
- */
-function matchesAny(text: string, keywords: string[]): boolean {
-    return keywords.some(kw => text.includes(kw));
-}
-
-/**
- * Detect gender from category name
- */
-function detectGenderFromCategory(category: string): string | undefined {
-    const lower = category.toLowerCase();
-
-    if (lower.includes('women') || lower.includes('female') || lower.includes('ladies')) {
-        return 'women';
-    }
-    if (lower.includes('men') && !lower.includes('women')) {
-        return 'men';
-    }
-
-    return undefined;
 }
 
 /**

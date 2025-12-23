@@ -130,6 +130,9 @@ export async function getPromptForProfile(profileId?: string): Promise<{ prompt:
 
 /**
  * Default hardcoded prompt (fallback)
+ * 
+ * FALLBACK BEHAVIOR: Only used when no processing profile exists in the database.
+ * New tenants should create a processing profile to customize extraction fields.
  */
 function getDefaultPrompt(): string {
     return `You are a product data extraction assistant specializing in fashion order confirmations.

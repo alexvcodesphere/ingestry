@@ -87,10 +87,10 @@ function StatCard({
     accentColor?: "primary" | "success" | "warning" | "danger";
 }) {
     const colorClasses = {
-        primary: "from-primary/10 to-primary/5 text-primary",
-        success: "from-emerald-500/10 to-emerald-500/5 text-emerald-600 dark:text-emerald-400",
-        warning: "from-amber-500/10 to-amber-500/5 text-amber-600 dark:text-amber-400",
-        danger: "from-rose-500/10 to-rose-500/5 text-rose-600 dark:text-rose-400",
+        primary: "text-primary",
+        success: "text-emerald-600 dark:text-emerald-400",
+        warning: "text-amber-600 dark:text-amber-400",
+        danger: "text-rose-600 dark:text-rose-400",
     };
 
     const iconBgClasses = {
@@ -101,21 +101,21 @@ function StatCard({
     };
 
     return (
-        <Card className="relative card-hover overflow-hidden border-0 shadow-sm">
-            <div className={`absolute inset-0 bg-gradient-to-br ${colorClasses[accentColor]} opacity-50`} />
-            <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBgClasses[accentColor]}`}>
-                    <span className="text-base">{icon}</span>
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBgClasses[accentColor]}`}>
+                    <span className="text-lg">{icon}</span>
                 </div>
             </CardHeader>
-            <CardContent className="relative">
-                <div className={`text-3xl font-bold tracking-tight ${colorClasses[accentColor].split(' ').pop()}`}>{value}</div>
-                <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+            <CardContent>
+                <div className={`text-4xl font-bold tracking-tight ${colorClasses[accentColor]}`}>{value}</div>
+                <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
             </CardContent>
         </Card>
     );
 }
+
 
 export default function DashboardPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
@@ -152,7 +152,8 @@ export default function DashboardPage() {
 
     const processingCount = jobs.filter((j) => j.status === "processing").length;
     const completedCount = jobs.filter((j) => j.status === "completed").length;
-    const failedCount = jobs.filter((j) => j.status === "failed").length;
+    // failedCount available for future use in error stats
+    const _failedCount = jobs.filter((j) => j.status === "failed").length;
 
     return (
         <div className="space-y-8">
@@ -163,7 +164,7 @@ export default function DashboardPage() {
                     <p className="mt-1 text-muted-foreground">Process orders, validate products, push to shop systems</p>
                 </div>
                 <Link href="/dashboard/orders/new">
-                    <Button className="gap-2 shadow-brand">
+                    <Button className="gap-2">
                         <span>＋</span>
                         New Order
                     </Button>
@@ -203,7 +204,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Jobs Table */}
-            <Card className="border-0 shadow-sm">
+            <Card>
                 <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30 px-6">
                     <div>
                         <CardTitle className="text-lg">Recent Jobs</CardTitle>

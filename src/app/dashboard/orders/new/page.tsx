@@ -5,7 +5,7 @@
  * Wizard flow for creating a new order: upload file → select profile → process
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ export default function NewOrderPage() {
     const [step, setStep] = useState<WizardStep>("upload");
     const [file, setFile] = useState<File | null>(null);
     const [shopSystem, setShopSystem] = useState<ShopSystem>("shopware");
-    const [isLoading, setIsLoading] = useState(false);
+    const [_isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState<string>("");
 

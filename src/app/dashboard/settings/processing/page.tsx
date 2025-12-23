@@ -25,6 +25,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { Trash2 } from "lucide-react";
 
 interface FieldConfig {
     key: string;
@@ -251,37 +252,32 @@ export default function ProcessingProfilesPage() {
                     </CardContent>
                 </Card>
             ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                     {profiles.map((profile) => (
-                        <Card key={profile.id} className={profile.is_default ? "border-primary" : ""}>
-                            <CardHeader className="pb-2">
+                        <Card key={profile.id} className={`gap-0 py-4 ${profile.is_default ? "border-primary" : ""}`}>
+                            <CardContent className="py-0">
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-lg flex items-center gap-2">
-                                        {profile.is_default && <span className="text-yellow-500">⭐</span>}
-                                        {profile.name}
-                                    </CardTitle>
-                                    <div className="flex gap-2">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            {profile.is_default && <span className="text-yellow-500">⭐</span>}
+                                            <span className="font-semibold">{profile.name}</span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            {profile.fields.map(f => f.label).join(", ")}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1">
                                         <Button variant="outline" size="sm" onClick={() => openEditor(profile)}>
                                             Edit
                                         </Button>
-                                        {!profile.is_default && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-red-500"
-                                                onClick={() => handleDelete(profile.id)}
-                                            >
-                                                Delete
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                                    <div>
-                                        <span className="font-medium">Fields:</span>{" "}
-                                        {profile.fields.map(f => f.label).join(", ")}
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleDelete(profile.id)}
+                                            className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 </div>
                             </CardContent>
@@ -292,7 +288,7 @@ export default function ProcessingProfilesPage() {
 
             {/* Profile Editor Dialog */}
             <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
                     <DialogHeader>
                         <DialogTitle>
                             {editingProfile ? `Edit: ${editingProfile.name}` : "New Processing Profile"}

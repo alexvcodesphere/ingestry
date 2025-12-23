@@ -233,6 +233,7 @@ export async function evaluateTemplate(
 
 /**
  * Get the default SKU template from database
+ * Throws error if no default template is configured
  */
 export async function getDefaultTemplate(): Promise<string> {
     const supabase = await createClient();
@@ -244,8 +245,7 @@ export async function getDefaultTemplate(): Promise<string> {
         .single();
 
     if (error || !data) {
-        // Fallback to hardcoded default
-        return '{season}{brand:2}{gender}{category:2}{color:2}{sequence:3}-{size}';
+        throw new Error('No default SKU template found. Please configure a default template in Settings → Templates.');
     }
 
     return data.template;

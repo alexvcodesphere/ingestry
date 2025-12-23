@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RTALE - Product Management",
+  title: "Ingestry - Product Management",
   description: "Extract, match, and upload fashion products from order PDFs",
 };
 

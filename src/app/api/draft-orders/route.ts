@@ -94,8 +94,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Brand is no longer fetched separately - it's handled via code_lookups during normalization
-        const brand = undefined;
+        // Brand is handled via code_lookups during normalization, not fetched separately
 
         // Create a job record first
         const { data: job, error: jobError } = await supabase

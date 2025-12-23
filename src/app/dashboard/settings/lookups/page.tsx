@@ -87,6 +87,7 @@ export default function CodeLookupsPage() {
         originalPart?: string;
     } | null>(null);
     const [isTesting, setIsTesting] = useState(false);
+    const [showTester, setShowTester] = useState(false);
 
     // Get unique field_keys from code_lookups
     const fetchFieldKeys = useCallback(async () => {
@@ -117,6 +118,12 @@ export default function CodeLookupsPage() {
     useEffect(() => {
         fetchFieldKeys();
     }, [fetchFieldKeys]);
+
+    // Check if tester should be shown (from settings)
+    useEffect(() => {
+        const saved = localStorage.getItem("showNormalizationTester");
+        setShowTester(saved === "true");
+    }, []);
 
     const activeConfig = fieldDefinitions.find(f => f.field_key === activeType);
 
@@ -156,7 +163,7 @@ export default function CodeLookupsPage() {
 
     // Test normalization
     const handleTestNormalization = async () => {
-        if (!testInput.trim() || !activeType || activeType === 'brand') return;
+        if (!testInput.trim() || !activeType) return;
 
         setIsTesting(true);
         try {
@@ -361,7 +368,7 @@ export default function CodeLookupsPage() {
             </div>
 
             {/* Test Normalization Panel */}
-            {activeType && activeType !== 'brand' && (
+            {showTester && activeType && (
                 <Card className="bg-muted/30">
                     <CardContent className="py-4">
                         <div className="flex items-start gap-6">

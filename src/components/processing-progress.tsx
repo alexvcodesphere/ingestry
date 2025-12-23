@@ -31,10 +31,10 @@ export function ProcessingProgress({
         return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
     };
 
-    // Calculate progress percentage
+    // Calculate progress percentage (available for future progress bar UI)
     const completedSteps = steps.filter((s) => s.status === "done").length;
     const totalSteps = steps.length;
-    const progressPercent = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+    const _progressPercent = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
 
     // Determine overall status
     const hasError = steps.some((s) => s.status === "error");
