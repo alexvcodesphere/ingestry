@@ -17,6 +17,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { Trash2 } from "lucide-react";
 import type { DraftOrder, DraftOrderStatus } from "@/types";
 
 const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
@@ -218,20 +219,22 @@ export default function OrdersPage() {
                                         <TableCell>
                                             {new Date(order.created_at).toLocaleDateString()}
                                         </TableCell>
-                                        <TableCell className="text-right space-x-1">
-                                            <Link href={`/dashboard/orders/${order.id}`}>
-                                                <Button variant="outline" size="sm">
-                                                    View
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Link href={`/dashboard/orders/${order.id}`}>
+                                                    <Button variant="outline" size="sm">
+                                                        View
+                                                    </Button>
+                                                </Link>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleDelete(order.id)}
+                                                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
-                                            </Link>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-red-500 hover:text-red-700"
-                                                onClick={() => handleDelete(order.id)}
-                                            >
-                                                Delete
-                                            </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}

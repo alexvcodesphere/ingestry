@@ -15,11 +15,9 @@ A Next.js application for extracting, normalizing, and managing product data fro
 
 ## Architecture
 
-```
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/                # API routes
-│   │   ├── documents/      # PDF upload & analysis
 │   │   ├── draft-orders/   # Order processing endpoints
 │   │   ├── jobs/           # Background job status
 │   │   └── lookups/        # Normalization testing
@@ -36,7 +34,7 @@ src/
 │
 ├── lib/                    # Core business logic
 │   ├── adapters/           # Shop system integrations
-│   ├── azure/              # Azure Document Intelligence
+│   ├── azure/              # Azure Document Intelligence (optional)
 │   ├── gpt/                # OpenAI GPT extraction
 │   ├── modules/processing/ # Processing pipeline
 │   ├── services/           # Business services
@@ -51,13 +49,13 @@ The core data flow for processing uploaded documents:
 
 ```
 ┌─────────────┐     ┌───────────────┐     ┌─────────────┐     ┌────────────┐
-│ PDF Upload  │ ──▶ │ GPT Extraction│ ──▶ │ Normalizer  │ ──▶ │  Enricher  │
+│ PDF Upload  │ ──▶ │ GPT Extraction│ ──▶ │ Normalizer  │ ──▶ │ Validation │
 └─────────────┘     └───────────────┘     └─────────────┘     └────────────┘
                            │                     │                    │
                            │                     │                    │
-                    Uses Processing        Uses code_lookups    Category rules
-                       Profile              for field values     (if template)
-                           │                     │                    │
+                    Uses Processing        Uses code_lookups     Validates
+                       Profile             for field values    required fields
+                    (REQUIRED)                   │                    │
                            ▼                     ▼                    ▼
                     ┌─────────────────────────────────────────────────────┐
                     │                  Draft Order                         │
@@ -77,15 +75,16 @@ The core data flow for processing uploaded documents:
                     └─────────────────────────────────────────────────────┘
 ```
 
+**Note:** Processing profiles are **required**. All field extraction, normalization, and SKU templating is driven by the selected profile.
+
 ## Key Modules
 
 ### Processing Module (`lib/modules/processing/`)
 
 | File | Purpose |
 |------|---------|
-| `pipeline.ts` | Orchestrates the full processing flow |
+| `pipeline.ts` | Orchestrates the full processing flow, validates products |
 | `normalizer.ts` | Transforms raw GPT output using profile fields and lookups |
-| `enricher.ts` | Adds category/gender based on template rules (fallback detection) |
 
 ### Services (`lib/services/`)
 
@@ -94,7 +93,6 @@ The core data flow for processing uploaded documents:
 | `template-engine.ts` | Parses and evaluates SKU templates with `{variable}` syntax |
 | `lookup-normalizer.ts` | Fuzzy matching engine for value normalization |
 | `draft-order.service.ts` | CRUD operations for draft orders |
-| `sku-generator.ts` | High-level SKU generation using templates |
 | `tenant.service.ts` | Multi-tenant context management |
 
 ### Adapters (`lib/adapters/`)
@@ -136,21 +134,17 @@ Managed via **Settings → Code Lookups**.
 
 Template syntax: `{variable}` or `{variable:length}`
 
-| Variable | Description |
-|----------|-------------|
-| `{brand}` | Brand name |
-| `{brand:2}` | Brand code (2 chars) |
-| `{category}` | Category name |
-| `{category:2}` | Category code |
-| `{color}` | Color name |
-| `{color:2}` | Color code |
-| `{gender}` | Gender (M/W/U) |
-| `{season}` | Season type code |
-| `{size}` | Size value |
-| `{sequence}` | Sequential number |
-| `{sequence:3}` | Padded to 3 digits |
-| `{year}` | 2-digit year |
-| `{ean}` | EAN barcode |
+**Variables are dynamic** - any field key defined in your processing profile can be used in templates. Common examples:
+
+| Syntax | Description |
+|--------|-------------|
+| `{fieldname}` | Value from product data (e.g., `{brand}`, `{color}`, `{size}`) |
+| `{fieldname:N}` | Truncate/pad to N characters (e.g., `{brand:2}` → "AC") |
+| `{sequence}` | Line number in the order (computed) |
+| `{sequence:3}` | Padded to 3 digits (e.g., "001") |
+| `{year}` | Current 2-digit year (computed) |
+
+**Example:** `{brand:2}-{color:2}-{size}` → "AC-NV-M"
 
 ## Database Schema
 
@@ -187,12 +181,6 @@ CREATE POLICY "Tenant isolation" ON table_name
 | PATCH | `/api/draft-orders/[id]` | Update order status |
 | POST | `/api/draft-orders/[id]/line-items` | Update line items |
 | POST | `/api/draft-orders/[id]/submit` | Export to shop system |
-
-### Documents
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/documents/analyze` | Analyze PDF with Azure DI |
 
 ### Lookups
 

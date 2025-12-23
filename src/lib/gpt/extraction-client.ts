@@ -17,48 +17,26 @@ const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 // Best model for vision-based extraction
 const DEFAULT_MODEL = "gpt-4o";
 
-// Improved system prompt for order confirmation extraction
-const EXTRACTION_INSTRUCTIONS = `You are an expert at extracting product data from fashion brand order confirmations.
-
-Your task is to extract ALL products from the provided order confirmation PDF and return them as a JSON object.
-
-For each product, extract these fields (use empty string "" if not found, never null):
-- name: Product name or description
-- color: Color name exactly as shown (e.g., "Black", "Navy Blue", "NATURAL/OFF WHITE")
-- size: Size exactly as shown (e.g., "S", "M", "L", "42", "ONE SIZE")
-- price: Unit price with currency if present (e.g., "€250.00", "$180")
-- quantity: Quantity ordered as string (e.g., "1", "2")
-- ean: EAN/UPC/Barcode - 13-digit number if present
-- sku: SKU or internal stock keeping unit code
-- articleNumber: Article number or item number
-- styleCode: Style code or style number (often starts with letters)
-- designerCode: Designer/manufacturer reference code
-- brand: Brand name if identifiable
-
-Rules:
-1. Each size/color combination = separate product entry
-2. Include ALL products, even if some fields are missing
-3. If a code could be multiple types, put it in the most specific field
-4. Return only valid JSON, no explanation
-
-Return format: {"products":[{"name":"","color":"","size":"","price":"","quantity":"","ean":"","sku":"","articleNumber":"","styleCode":"","designerCode":"","brand":""},...]}`;
-
 /**
  * Extract products from PDF using GPT-4o Vision via Responses API
  * Sends the PDF directly as base64 - no conversion needed
  * @param pdfBuffer PDF file as Buffer
- * @param systemPrompt Optional custom system prompt from processing profile
+ * @param systemPrompt System prompt from processing profile (required)
  * @param options Additional options like model selection
  */
 export async function extractWithGPT(
     pdfBuffer: Buffer,
-    systemPrompt?: string,
+    systemPrompt: string,
     options: { model?: string } = {}
 ): Promise<GPTExtractionResult> {
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
         throw new Error("OPENAI_API_KEY not configured. Add it to .env.local");
+    }
+
+    if (!systemPrompt) {
+        throw new Error("System prompt is required. Ensure a processing profile is configured.");
     }
 
     const model = options.model || DEFAULT_MODEL;
@@ -91,7 +69,7 @@ export async function extractWithGPT(
                 ],
             },
         ],
-        instructions: systemPrompt || EXTRACTION_INSTRUCTIONS,
+        instructions: systemPrompt,
         text: {
             format: {
                 type: "json_object",

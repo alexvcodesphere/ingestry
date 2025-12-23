@@ -176,15 +176,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 const data = item.normalized_data as NormalizedProduct;
                 if (!data) continue;
 
-                // Build template context
+                // Build template context - pass all product data dynamically
+                const productValues: Record<string, string> = {};
+                for (const [key, value] of Object.entries(data)) {
+                    if (typeof value === 'string') {
+                        productValues[key] = value;
+                    } else if (value !== null && value !== undefined) {
+                        productValues[key] = String(value);
+                    }
+                }
+
                 const context: TemplateContext = {
-                    brand: data['brand'] as string | undefined,
-                    category: data['category'] as string | undefined,
-                    color: (data['color_normalized'] || data['color']) as string | undefined,
-                    gender: data['gender'] as string | undefined,
-                    season: data['season'] as string | undefined,
-                    size: (data['size_normalized'] || data['size']) as string | undefined,
-                    ean: data['ean'] as string | undefined,
+                    values: productValues,
                     sequence: item.line_number || 1,
                 };
 

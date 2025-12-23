@@ -39,21 +39,13 @@ export async function normalizeProduct(
     }
 
     // Step 2: Build template context from all raw and normalized values
-    // This context is used for template evaluation
+    // This context is used for template evaluation - all values are dynamic
     const templateContext: TemplateContext = {
-        brand: normalizedValues['brand'] || rawAsRecord['brand'] || context.brand_name || '',
-        category: normalizedValues['category'] || rawAsRecord['category'] || '',
-        color: normalizedValues['color'] || rawAsRecord['color'] || '',
-        size: rawAsRecord['size'] || '',
-        gender: normalizedValues['gender'] || rawAsRecord['gender'] || '',
-        season: normalizedValues['season'] || rawAsRecord['season'] || '',
-        ean: rawAsRecord['ean'] || '',
-        sequence: index + 1,
-        year: new Date().getFullYear(),
-        custom: {
+        values: {
             ...rawAsRecord,
             ...normalizedValues,
         },
+        sequence: index + 1,
     };
 
     // Step 3: Process templated fields

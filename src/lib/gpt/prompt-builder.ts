@@ -141,7 +141,7 @@ Extract ALL products from the provided document. For each product, capture:
 - name: Full product name as shown
 - brand: Brand or designer name
 - sku: Existing SKU or article number if present
-- color: Colour name or code
+- color: Color name or code
 - size: Size (XS, S, M, L, XL, numeric, etc.)
 - price: Unit price with currency symbol
 - quantity: Number of units ordered

@@ -124,7 +124,7 @@ export default function SettingsPage() {
             <div>
                 <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
                 <p className="text-muted-foreground">
-                    Configure templates, integrations, and system preferences
+                    Configure processing profiles, lookups, and integrations
                 </p>
             </div>
 

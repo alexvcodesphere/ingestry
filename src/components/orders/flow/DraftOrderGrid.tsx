@@ -44,70 +44,15 @@ interface DraftOrderGridProps {
     onRegenerateSku?: (itemIds: string[]) => Promise<void>;
     onBulkUpdate?: (itemIds: string[], updates: Partial<NormalizedProduct>) => Promise<void>;
     isSubmitting?: boolean;
+    /** Field key to label mapping from processing profile */
+    fieldLabels?: Record<string, string>;
 }
 
 // Fields that should be treated as numbers
 const NUMBER_FIELDS = new Set(["price", "quantity"]);
 
-// Skip these internal/computed fields (color_normalized handled specially with color)
-const SKIP_FIELDS = new Set(["id", "color_normalized", "size_normalized", "validation_errors"]);
-
-// Special color cell that shows normalization
-const ColorCell = ({
-    rawColor,
-    normalizedColor,
-    onUpdate,
-    disabled,
-    hasError,
-    errorMessage,
-}: {
-    rawColor: string;
-    normalizedColor: string;
-    onUpdate: (value: string) => void;
-    disabled: boolean;
-    hasError?: boolean;
-    errorMessage?: string;
-}) => {
-    const isNormalized = rawColor && normalizedColor && rawColor.toLowerCase() !== normalizedColor.toLowerCase();
-
-    return (
-        <div className="space-y-1">
-            {/* Show raw color with arrow if different from normalized */}
-            {isNormalized && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className="italic">{rawColor}</span>
-                    <span>→</span>
-                </div>
-            )}
-            {/* Editable normalized color */}
-            <EditableCell
-                value={normalizedColor || rawColor || ""}
-                onChange={onUpdate}
-                hasError={hasError}
-                errorMessage={errorMessage}
-                disabled={disabled}
-            />
-        </div>
-    );
-};
-
-// Friendly labels for known fields
-const FIELD_LABELS: Record<string, string> = {
-    sku: "SKU",
-    name: "Name",
-    brand: "Brand",
-    color: "Colour",
-    size: "Size",
-    price: "Price",
-    quantity: "Quantity",
-    category: "Category",
-    gender: "Gender",
-    season: "Season",
-    ean: "EAN",
-    articleNumber: "Article #",
-    styleCode: "Style Code",
-    designerCode: "Designer Code",
-};
+// Skip these internal/computed fields
+const SKIP_FIELDS = new Set(["id", "validation_errors"]);
 
 export function DraftOrderGrid({
     lineItems,
@@ -117,6 +62,7 @@ export function DraftOrderGrid({
     onRegenerateSku,
     onBulkUpdate,
     isSubmitting = false,
+    fieldLabels = {},
 }: DraftOrderGridProps) {
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [updatingRows, setUpdatingRows] = useState<Set<string>>(new Set());
@@ -141,10 +87,10 @@ export function DraftOrderGrid({
         }
         return Array.from(fieldSet).map((key) => ({
             key,
-            label: FIELD_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+            label: fieldLabels[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
             type: NUMBER_FIELDS.has(key) ? "number" : "text",
         }));
-    }, [lineItems]);
+    }, [lineItems, fieldLabels]);
 
     // Debug: Log discovered fields (check browser console)
     useEffect(() => {
@@ -254,21 +200,6 @@ export function DraftOrderGrid({
                                 )}
                             </Button>
                         </div>
-                    );
-                }
-
-                // Special handling for color field - show normalization indicator
-                if (field.key === "color") {
-                    const normalizedColor = data?.["color_normalized"] as string || "";
-                    return (
-                        <ColorCell
-                            rawColor={String(value)}
-                            normalizedColor={normalizedColor}
-                            onUpdate={(v) => handleCellUpdate(item.id, "color_normalized" as keyof NormalizedProduct, v)}
-                            disabled={updatingRows.has(item.id)}
-                            hasError={!!error}
-                            errorMessage={error?.message}
-                        />
                     );
                 }
 

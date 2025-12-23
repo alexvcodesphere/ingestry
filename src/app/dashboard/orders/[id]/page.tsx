@@ -293,6 +293,10 @@ export default function OrderDetailPage() {
                             onRegenerateSku={handleRegenerateSku}
                             onBulkUpdate={handleBulkUpdate}
                             isSubmitting={isSubmitting}
+                            fieldLabels={
+                                ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
+                                    .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
+                            }
                         />
                     ) : (
                         <p className="text-center py-8 text-muted-foreground">

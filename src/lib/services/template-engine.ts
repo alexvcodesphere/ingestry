@@ -2,11 +2,18 @@
  * SKU Template Engine
  * Parses and evaluates SKU templates with variable placeholders.
  * 
- * Template syntax: {variable:modifier}
+ * Template syntax: {variable.code:N} or {variable:N}
+ * 
+ * Modifiers:
+ *   .code  - Use the lookup code (e.g., "NV" for "Nike")
+ *   :N     - Truncate/pad to N characters
+ * 
  * Examples:
- *   {brand:2}     - Brand code, 2 characters
- *   {sequence:3}  - Sequence number, padded to 3 digits
- *   {size}        - Size value, as-is
+ *   {brand:2}      - First 2 characters of brand value
+ *   {brand.code}   - Lookup code for brand (e.g., "NK" for "Nike")
+ *   {color.code:2} - Lookup code for color, padded to 2 chars
+ *   {sequence:3}   - Sequence number, padded to 3 digits
+ *   {size}         - Size value, as-is
  */
 
 import { createClient } from '@/lib/supabase/server';
@@ -16,31 +23,30 @@ import { createClient } from '@/lib/supabase/server';
  */
 export interface TemplateVariable {
     name: string;
-    modifier?: number;  // Length/padding modifier
+    useCode?: boolean;  // Whether to use lookup code (.code modifier)
+    modifier?: number;  // Length/padding modifier (:N)
 }
 
 /**
  * Context for template evaluation
+ * All field values come from the product data dynamically.
+ * Only 'sequence' is computed.
  */
 export interface TemplateContext {
-    brand?: string;
-    category?: string;
-    color?: string;
-    size?: string;
-    gender?: string;
-    season?: string;
-    ean?: string;
+    /** All field values from the product (normalized and raw) */
+    values: Record<string, string>;
+    /** Sequence number for this product in the batch */
     sequence: number;
-    year?: number;
-    custom?: Record<string, string>;
 }
 
 /**
  * Parse a template string into segments
+ * Supports: {variable}, {variable:N}, {variable.code}, {variable.code:N}
  */
 export function parseTemplate(template: string): Array<string | TemplateVariable> {
     const segments: Array<string | TemplateVariable> = [];
-    const regex = /\{([^}:]+)(?::(\d+))?\}/g;
+    // Match: {name} or {name.code} or {name:N} or {name.code:N}
+    const regex = /\{([a-zA-Z_][a-zA-Z0-9_]*)(\.code)?(?::(\d+))?\}/g;
 
     let lastIndex = 0;
     let match;
@@ -54,7 +60,8 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
         // Add the variable
         segments.push({
             name: match[1],
-            modifier: match[2] ? parseInt(match[2], 10) : undefined,
+            useCode: match[2] === '.code',
+            modifier: match[3] ? parseInt(match[3], 10) : undefined,
         });
 
         lastIndex = match.index + match[0].length;
@@ -70,7 +77,9 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
 
 /**
  * Resolve a single variable to its value
- * Only {sequence} is computed - all other variables use lookups or raw values
+ * - {sequence} is computed
+ * - {variable.code} uses lookup codes
+ * - All other variables use raw values
  */
 export async function resolveVariable(
     variable: TemplateVariable,
@@ -79,21 +88,25 @@ export async function resolveVariable(
 ): Promise<string> {
     let value: string;
 
-    // Only sequence is computed, everything else goes through lookup
+    // Sequence is a computed field
     if (variable.name === 'sequence') {
         value = String(context.sequence);
     } else {
         // Get the raw value from context
         const rawValue = getContextValue(variable.name, context);
 
-        // Try to look up a code for this value
-        const lookupResult = await lookupCode(variable.name, rawValue, lookups);
-
-        // Use lookup result if found, otherwise use raw value
-        value = lookupResult !== '00' ? lookupResult : rawValue;
+        // Only use lookup code if .code modifier is specified
+        if (variable.useCode) {
+            const lookupResult = await lookupCode(variable.name, rawValue, lookups);
+            // Use lookup result if found, otherwise use raw value as fallback
+            value = lookupResult !== '00' ? lookupResult : rawValue;
+        } else {
+            // No .code modifier - use raw value directly
+            value = rawValue;
+        }
     }
 
-    // Apply modifier (length/padding)
+    // Apply :N modifier (length/padding)
     if (variable.modifier) {
         if (/^\d+$/.test(value)) {
             // Numeric: pad with zeros
@@ -109,37 +122,10 @@ export async function resolveVariable(
 
 /**
  * Get a value from the template context by variable name
+ * No special handling - returns extracted value or empty string.
  */
 function getContextValue(name: string, context: TemplateContext): string {
-    // Check direct context properties first
-    const directProps: Record<string, string | undefined> = {
-        brand: context.brand,
-        category: context.category,
-        color: context.color,
-        size: context.size,
-        gender: context.gender,
-        season: context.season,
-        season_type: context.custom?.['season_type'],
-        ean: context.ean,
-        year: context.year?.toString(),
-    };
-
-    if (name in directProps && directProps[name]) {
-        return directProps[name] || '';
-    }
-
-    // Check custom context
-    if (context.custom?.[name]) {
-        return context.custom[name];
-    }
-
-    // Legacy custom.* syntax
-    if (name.startsWith('custom.')) {
-        const key = name.slice(7);
-        return context.custom?.[key] || '';
-    }
-
-    return '';
+    return context.values[name] || '';
 }
 
 /**

@@ -121,10 +121,18 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get processing profile
+        // Get processing profile (required)
         const { prompt: systemPrompt, profile } = await getPromptForProfile(profileId || undefined);
-        console.log(`[API] Profile: ${profile?.name || 'fallback'}`);
-        console.log(`[API] Profile fields: ${profile?.fields?.map((f: { key: string }) => f.key).join(', ') || 'default'}`);
+
+        if (!profile) {
+            return NextResponse.json(
+                { success: false, error: 'Processing profile is required. Please create a profile in Settings → Processing.' },
+                { status: 400 }
+            );
+        }
+
+        console.log(`[API] Profile: ${profile.name}`);
+        console.log(`[API] Profile fields: ${profile.fields?.map((f: { key: string }) => f.key).join(', ')}`);
         console.log(`[API] Prompt preview: ${systemPrompt.substring(0, 200)}...`);
 
         // Extract products using GPT Vision

@@ -1,7 +1,8 @@
 /**
  * Processing Pipeline Orchestrator
- * Connects GPT parsing output → Normalizer → Enricher → Draft Order creation.
+ * Connects GPT parsing output → Normalizer → Draft Order creation.
  * This is the main entry point for processing uploaded files.
+ * Processing profiles are required.
  */
 
 import type {
@@ -15,26 +16,58 @@ import type {
 } from '@/types';
 import type { ProcessingProfile } from '@/lib/gpt/prompt-builder';
 import { normalizeProducts } from './normalizer';
-import { enrichProducts, validateProduct } from './enricher';
 import { createClient } from '@/lib/supabase/server';
+
+/**
+ * Validate that the product has required fields populated
+ * Validation is dynamic - only checks fields that exist in the product
+ */
+function validateProduct(product: NormalizedProduct): string[] {
+    const errors: string[] = [];
+    const productRecord = product as unknown as Record<string, unknown>;
+
+    // Only validate SKU if it exists as a field
+    if ('sku' in productRecord && !product['sku']) {
+        errors.push('SKU is required');
+    }
+
+    // Only validate name if it exists as a field
+    if ('name' in productRecord && !product['name']) {
+        errors.push('Name is required');
+    }
+
+    // Only validate price if it exists as a field
+    if ('price' in productRecord && Number(product['price'] || 0) <= 0) {
+        errors.push('Price must be greater than 0');
+    }
+
+    // Only validate quantity if it exists as a field
+    if ('quantity' in productRecord && Number(product['quantity'] || 0) <= 0) {
+        errors.push('Quantity must be greater than 0');
+    }
+
+    return errors;
+}
 
 /**
  * Process raw GPT extraction results through the full pipeline
  * @param rawProducts Products extracted by GPT Vision
- * @param context Processing context (shop system, template, brand, etc.)
- * @param profile Optional processing profile for normalization and SKU generation
+ * @param context Processing context (shop system, brand, etc.)
+ * @param profile Processing profile for normalization and SKU generation (required)
  * @returns Created draft order with line items
  */
 export async function processOrder(
     rawProducts: RawExtractedProduct[],
     context: ProcessingContext,
-    profile?: ProcessingProfile | null
+    profile: ProcessingProfile
 ): Promise<DraftOrder> {
+    if (!profile) {
+        throw new Error('Processing profile is required. Please select or create a profile.');
+    }
+
     console.log(`[Pipeline] Processing ${rawProducts.length} products`);
     console.log(`[Pipeline] Context: shop=${context.shop_system}, brand=${context.brand_name || 'none'}`);
-    if (profile) {
-        console.log(`[Pipeline] Using profile: ${profile.name}`);
-    }
+    console.log(`[Pipeline] Using profile: ${profile.name}`);
 
     // Step 1: Normalize products (using profile for field normalization)
     console.log('[Pipeline] Step 1: Normalizing products...');
@@ -47,15 +80,8 @@ export async function processOrder(
         throw normalizeError;
     }
 
-    // Step 2: Enrich with categories (skip if using a profile - profile defines the fields)
-    let finalProducts = normalized;
-    if (!profile) {
-        console.log('[Pipeline] Step 2: Enriching with categories...');
-        finalProducts = enrichProducts(normalized, context.template);
-        console.log('[Pipeline] Enrichment complete');
-    } else {
-        console.log('[Pipeline] Step 2: Skipping enrichment (using profile fields)');
-    }
+    // Step 2: Products are ready (profile defines all fields)
+    const finalProducts = normalized;
 
     // Step 3: Create draft order with line items
     console.log('[Pipeline] Step 3: Creating draft order...');
@@ -98,6 +124,7 @@ async function createDraftOrder(
                 product_count: normalizedProducts.length,
                 profile_id: profile?.id || null,
                 profile_name: profile?.name || null,
+                profile_fields: profile?.fields || null,
             },
         })
         .select()
@@ -162,13 +189,14 @@ async function createDraftOrder(
 
 /**
  * Get the field name from a validation error message
+ * Extracts the field name dynamically from the message pattern
  */
 function getErrorField(message: string): string {
-    const lower = message.toLowerCase();
-    if (lower.includes('sku')) return 'sku';
-    if (lower.includes('name')) return 'name';
-    if (lower.includes('price')) return 'price';
-    if (lower.includes('quantity')) return 'quantity';
+    // Messages follow pattern: "FieldName is required" or "FieldName must be..."
+    const match = message.match(/^(\w+)\s+(is|must)/i);
+    if (match) {
+        return match[1].toLowerCase();
+    }
     return 'general';
 }
 
@@ -199,8 +227,8 @@ export async function reprocessLineItem(
         ...updatedData,
     };
 
-    // Re-enrich the product
-    const enriched = enrichProducts([merged], context.template)[0];
+    // Product data is merged (no enrichment needed with profiles)
+    const enriched = merged;
 
     // Re-validate
     const validationErrors: ValidationError[] = validateProduct(enriched).map(msg => ({
@@ -279,4 +307,3 @@ export async function checkOrderApprovalStatus(orderId: string): Promise<{
 
 // Export individual modules for direct use
 export { normalizeProducts, normalizeProduct } from './normalizer';
-export { enrichProducts, enrichProduct, validateProduct } from './enricher';

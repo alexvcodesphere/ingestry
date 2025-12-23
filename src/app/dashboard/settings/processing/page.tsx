@@ -365,21 +365,22 @@ export default function ProcessingProfilesPage() {
                                                         </Select>
                                                     </div>
                                                 )}
-                                                <div className="flex items-center gap-1.5">
-                                                    <Checkbox
-                                                        id={`template-${field.key}`}
-                                                        checked={field.use_template || false}
-                                                        onCheckedChange={(v) => toggleFieldTemplate(field.key, !!v)}
-                                                    />
-                                                    <Label htmlFor={`template-${field.key}`} className="text-xs cursor-pointer">Template</Label>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleFieldTemplate(field.key, !field.use_template)}
+                                                    className={`relative h-6 w-11 rounded-full p-0.5 transition-colors ${field.use_template ? "bg-primary" : "bg-muted"}`}
+                                                    title="Use template"
+                                                >
+                                                    <div className={`h-5 w-5 rounded-full bg-white transition-all ${field.use_template ? "translate-x-5" : "translate-x-0"}`} />
+                                                </button>
+                                                <span className="text-xs text-muted-foreground">Template</span>
                                                 <Button
                                                     variant="ghost"
-                                                    size="sm"
-                                                    className="text-red-500 hover:text-red-600 px-2"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
                                                     onClick={() => removeField(field.key)}
                                                 >
-                                                    ✕
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
                                             {field.use_template && (
