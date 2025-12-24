@@ -7,7 +7,7 @@
  */
 
 import type { RawExtractedProduct, NormalizedProduct, ProcessingContext } from '@/types';
-import type { ProcessingProfile } from '@/lib/gpt/prompt-builder';
+import type { ProcessingProfile } from '@/lib/extraction';
 import { normalizeUsingLookup } from '@/lib/services/lookup-normalizer';
 import { evaluateTemplate, TemplateContext } from '@/lib/services/template-engine';
 
@@ -24,11 +24,16 @@ export async function normalizeProduct(
     // Cast raw to record for dynamic field access
     const rawAsRecord = raw as unknown as Record<string, string>;
     const normalizedValues: Record<string, string> = {};
+    const lookupTypeMapping: Record<string, string> = {};
 
     // Step 1: Apply normalizations for fields that have normalize_with configured
+    // Also build the lookup type mapping for template engine
     if (profile?.fields) {
         for (const field of profile.fields) {
             if (field.normalize_with) {
+                // Build mapping: field key -> lookup type
+                lookupTypeMapping[field.key] = field.normalize_with;
+                
                 const rawValue = rawAsRecord[field.key];
                 if (typeof rawValue === 'string' && rawValue) {
                     const normalized = await normalizeUsingLookup(rawValue, field.normalize_with);
@@ -38,17 +43,30 @@ export async function normalizeProduct(
         }
     }
 
-    // Step 2: Build template context from all raw and normalized values
-    // This context is used for template evaluation - all values are dynamic
+    // Step 2: Apply fallbacks BEFORE building template context
+    // This ensures templates can use fallback values
+    const valuesWithFallbacks: Record<string, string> = {
+        ...rawAsRecord,
+        ...normalizedValues,
+    };
+    if (profile?.fields) {
+        for (const field of profile.fields) {
+            const currentValue = valuesWithFallbacks[field.key];
+            if (field.fallback && (!currentValue || currentValue === '')) {
+                valuesWithFallbacks[field.key] = field.fallback;
+                console.log(`[Normalizer] Applied fallback for ${field.key}: ${field.fallback}`);
+            }
+        }
+    }
+
+    // Step 3: Build template context with fallbacks and lookup mapping
     const templateContext: TemplateContext = {
-        values: {
-            ...rawAsRecord,
-            ...normalizedValues,
-        },
+        values: valuesWithFallbacks,
         sequence: index + 1,
+        lookupTypeMapping,
     };
 
-    // Step 3: Process templated fields
+    // Step 4: Process templated fields
     const templatedValues: Record<string, string> = {};
     if (profile?.fields) {
         for (const field of profile.fields) {
@@ -65,7 +83,7 @@ export async function normalizeProduct(
         }
     }
 
-    // Step 4: Build result with only the fields defined in the profile
+    // Step 5: Build result with only the fields defined in the profile
     if (profile?.fields && profile.fields.length > 0) {
         console.log(`[Normalizer] Using profile fields: ${profile.fields.map(f => f.key).join(', ')}`);
 
@@ -73,17 +91,18 @@ export async function normalizeProduct(
 
         for (const field of profile.fields) {
             const key = field.key;
+            let value: unknown = '';
 
-            // Priority: templated value > normalized value > raw value
+            // Priority: templated value > value with fallbacks already applied
             if (field.use_template && templatedValues[key] !== undefined) {
-                result[key] = templatedValues[key];
-            } else if (normalizedValues[key] !== undefined) {
-                result[key] = normalizedValues[key];
+                value = templatedValues[key];
             } else {
-                // Get raw value and apply type-specific parsing if needed
-                const rawValue = rawAsRecord[key] || '';
-                result[key] = parseFieldValue(key, rawValue);
+                // Use valuesWithFallbacks which already has normalized + fallback values
+                const fallbackedValue = valuesWithFallbacks[key] || '';
+                value = parseFieldValue(key, fallbackedValue);
             }
+
+            result[key] = value;
         }
 
         console.log(`[Normalizer] Result keys: ${Object.keys(result).join(', ')}`);

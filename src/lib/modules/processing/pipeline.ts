@@ -14,7 +14,7 @@ import type {
     LineItemStatus,
     ValidationError,
 } from '@/types';
-import type { ProcessingProfile } from '@/lib/gpt/prompt-builder';
+import type { ProcessingProfile } from '@/lib/extraction';
 import { normalizeProducts } from './normalizer';
 import { createClient } from '@/lib/supabase/server';
 
@@ -114,6 +114,7 @@ async function createDraftOrder(
         .from('draft_orders')
         .insert({
             tenant_id: tenantId,
+            name: context.order_name || null,
             status: 'pending_review',
             shop_system: context.shop_system,
             template_id: context.template?.id || null,

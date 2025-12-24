@@ -8,8 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getDraftOrders } from '@/lib/services/draft-order.service';
 import { processOrder } from '@/lib/modules/processing/pipeline';
-import { extractWithGPT } from '@/lib/gpt/extraction-client';
-import { getPromptForProfile } from '@/lib/gpt/prompt-builder';
+import { extractProducts, getPromptForProfile, type VisionModel } from '@/lib/extraction';
 import type { DraftOrderStatus, ShopSystem, RawExtractedProduct } from '@/types';
 
 /**
@@ -79,6 +78,7 @@ export async function POST(request: NextRequest) {
         const shopSystem = formData.get('shop_system') as ShopSystem;
         const brandId = formData.get('brand_id') as string | null;
         const profileId = formData.get('profile_id') as string | null;
+        const orderName = formData.get('order_name') as string | null;
 
         // Validate required fields
         if (!file) {
@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
                 input: {
                     fileName: file.name,
                     fileSize: file.size,
+                    orderName: orderName || file.name.replace(/\.[^/.]+$/, ''),
                     shopSystem,
                     brandId,
                     profileId,
@@ -135,12 +136,24 @@ export async function POST(request: NextRequest) {
         console.log(`[API] Profile fields: ${profile.fields?.map((f: { key: string }) => f.key).join(', ')}`);
         console.log(`[API] Prompt preview: ${systemPrompt.substring(0, 200)}...`);
 
-        // Extract products using GPT Vision
+        // Get tenant's vision model setting
+        const { data: tenantData, error: tenantError } = await supabase
+            .from('tenants')
+            .select('settings')
+            .single();
+        
+        console.log(`[API] Tenant data:`, JSON.stringify(tenantData));
+        console.log(`[API] Tenant error:`, tenantError?.message || 'none');
+        
+        const visionModel = (tenantData?.settings?.vision_model as VisionModel) || 'gpt-4o';
+        console.log(`[API] Vision model resolved to: ${visionModel}`);
+
+        // Extract products using selected vision model
         const fileBuffer = Buffer.from(await file.arrayBuffer());
         let rawProducts: RawExtractedProduct[];
 
         try {
-            const extraction = await extractWithGPT(fileBuffer, systemPrompt);
+            const extraction = await extractProducts(fileBuffer, systemPrompt, visionModel);
             rawProducts = extraction.products;
 
             // Update job with result count
@@ -148,6 +161,7 @@ export async function POST(request: NextRequest) {
                 .from('jobs')
                 .update({
                     result: { productCount: rawProducts.length },
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('id', job.id);
         } catch (extractionError) {
@@ -156,6 +170,7 @@ export async function POST(request: NextRequest) {
                 .update({
                     status: 'failed',
                     error: extractionError instanceof Error ? extractionError.message : 'Extraction failed',
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('id', job.id);
 
@@ -171,6 +186,7 @@ export async function POST(request: NextRequest) {
                 shop_system: shopSystem,
                 user_id: user.id,
                 source_job_id: job.id,
+                order_name: orderName || undefined,
                 options: {
                     auto_generate_sku: true,
                     normalize_colors: true,
@@ -187,6 +203,7 @@ export async function POST(request: NextRequest) {
                         productCount: rawProducts.length,
                         draftOrderId: draftOrder.id,
                     },
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('id', job.id);
 
@@ -204,6 +221,7 @@ export async function POST(request: NextRequest) {
                 .update({
                     status: 'failed',
                     error: pipelineError instanceof Error ? pipelineError.message : 'Pipeline failed',
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('id', job.id);
 

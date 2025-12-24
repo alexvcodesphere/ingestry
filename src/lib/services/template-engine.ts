@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/server';
 export interface TemplateVariable {
     name: string;
     useCode?: boolean;  // Whether to use lookup code (.code modifier)
+    customKey?: string; // Custom column key from extra_data (e.g., .xentral_code)
     modifier?: number;  // Length/padding modifier (:N)
 }
 
@@ -37,16 +38,19 @@ export interface TemplateContext {
     values: Record<string, string>;
     /** Sequence number for this product in the batch */
     sequence: number;
+    /** Mapping from field key to lookup type (from normalize_with) */
+    lookupTypeMapping?: Record<string, string>;
 }
 
 /**
  * Parse a template string into segments
- * Supports: {variable}, {variable:N}, {variable.code}, {variable.code:N}
+ * Supports: {variable}, {variable:N}, {variable.code}, {variable.code:N}, {variable.custom_key}
  */
 export function parseTemplate(template: string): Array<string | TemplateVariable> {
     const segments: Array<string | TemplateVariable> = [];
-    // Match: {name} or {name.code} or {name:N} or {name.code:N}
-    const regex = /\{([a-zA-Z_][a-zA-Z0-9_]*)(\.code)?(?::(\d+))?\}/g;
+    // Match: {name} or {name.key} or {name:N} or {name.key:N}
+    // key can be 'code' or any custom column key
+    const regex = /\{([a-zA-Z_][a-zA-Z0-9_]*)(?:\.([a-zA-Z_][a-zA-Z0-9_]*))?(?::(\d+))?\}/g;
 
     let lastIndex = 0;
     let match;
@@ -57,10 +61,13 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
             segments.push(template.slice(lastIndex, match.index));
         }
 
+        const keyModifier = match[2]; // The .xxx part
+
         // Add the variable
         segments.push({
             name: match[1],
-            useCode: match[2] === '.code',
+            useCode: keyModifier === 'code',
+            customKey: keyModifier && keyModifier !== 'code' ? keyModifier : undefined,
             modifier: match[3] ? parseInt(match[3], 10) : undefined,
         });
 
@@ -79,12 +86,14 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
  * Resolve a single variable to its value
  * - {sequence} is computed
  * - {variable.code} uses lookup codes
+ * - {variable.custom_key} uses extra_data custom columns
  * - All other variables use raw values
  */
 export async function resolveVariable(
     variable: TemplateVariable,
     context: TemplateContext,
-    lookups: Map<string, Map<string, string>>
+    lookups: Map<string, Map<string, string>>,
+    extraDataLookups: Map<string, Map<string, Record<string, unknown>>>
 ): Promise<string> {
     let value: string;
 
@@ -95,13 +104,20 @@ export async function resolveVariable(
         // Get the raw value from context
         const rawValue = getContextValue(variable.name, context);
 
-        // Only use lookup code if .code modifier is specified
         if (variable.useCode) {
-            const lookupResult = await lookupCode(variable.name, rawValue, lookups);
-            // Use lookup result if found, otherwise use raw value as fallback
+            // Use lookup code (.code modifier)
+            // Map field key to lookup type using normalize_with mapping
+            const lookupType = context.lookupTypeMapping?.[variable.name] || variable.name;
+            const lookupResult = await lookupCode(lookupType, rawValue, lookups);
             value = lookupResult !== '00' ? lookupResult : rawValue;
+        } else if (variable.customKey) {
+            // Use custom column from extra_data
+            // Map field key to lookup type using normalize_with mapping
+            const lookupType = context.lookupTypeMapping?.[variable.name] || variable.name;
+            const extraData = await lookupExtraData(lookupType, rawValue, extraDataLookups);
+            value = extraData[variable.customKey] !== undefined ? String(extraData[variable.customKey]) : '';
         } else {
-            // No .code modifier - use raw value directly
+            // No modifier - use raw value directly
             value = rawValue;
         }
     }
@@ -159,6 +175,36 @@ async function lookupCode(
 }
 
 /**
+ * Look up extra_data from the extraData lookups map
+ */
+async function lookupExtraData(
+    type: string,
+    name: string,
+    extraDataLookups: Map<string, Map<string, Record<string, unknown>>>
+): Promise<Record<string, unknown>> {
+    if (!name) return {};
+
+    const normalized = name.toLowerCase().trim();
+    const typeLookups = extraDataLookups.get(type);
+
+    if (typeLookups) {
+        // Try direct match
+        if (typeLookups.has(normalized)) {
+            return typeLookups.get(normalized)!;
+        }
+
+        // Try partial match
+        for (const [key, extraData] of typeLookups) {
+            if (normalized.includes(key) || key.includes(normalized)) {
+                return extraData;
+            }
+        }
+    }
+
+    return {};
+}
+
+/**
  * Load all code lookups from database
  */
 export async function loadCodeLookups(): Promise<Map<string, Map<string, string>>> {
@@ -195,6 +241,43 @@ export async function loadCodeLookups(): Promise<Map<string, Map<string, string>
 }
 
 /**
+ * Load all code lookups with extra_data from database
+ */
+export async function loadExtraDataLookups(): Promise<Map<string, Map<string, Record<string, unknown>>>> {
+    const supabase = await createClient();
+    const lookups = new Map<string, Map<string, Record<string, unknown>>>();
+
+    const { data, error } = await supabase
+        .from('code_lookups')
+        .select('field_key, name, aliases, extra_data');
+
+    if (error || !data) {
+        console.error('Failed to load extra_data lookups:', error);
+        return lookups;
+    }
+
+    for (const row of data) {
+        if (!lookups.has(row.field_key)) {
+            lookups.set(row.field_key, new Map());
+        }
+
+        const fieldLookup = lookups.get(row.field_key)!;
+        const normalized = row.name.toLowerCase().trim();
+        const extraData = (row.extra_data || {}) as Record<string, unknown>;
+        fieldLookup.set(normalized, extraData);
+
+        // Add aliases
+        if (row.aliases && Array.isArray(row.aliases)) {
+            for (const alias of row.aliases) {
+                fieldLookup.set(alias.toLowerCase().trim(), extraData);
+            }
+        }
+    }
+
+    return lookups;
+}
+
+/**
  * Evaluate a template with the given context
  */
 export async function evaluateTemplate(
@@ -203,13 +286,14 @@ export async function evaluateTemplate(
 ): Promise<string> {
     const segments = parseTemplate(template);
     const lookups = await loadCodeLookups();
+    const extraDataLookups = await loadExtraDataLookups();
 
     const parts: string[] = [];
     for (const segment of segments) {
         if (typeof segment === 'string') {
             parts.push(segment);
         } else {
-            const value = await resolveVariable(segment, context, lookups);
+            const value = await resolveVariable(segment, context, lookups, extraDataLookups);
             parts.push(value);
         }
     }

@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Trash2 } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -18,6 +19,14 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { TemplateInput, type FieldConfig as TemplateFieldConfig } from "@/components/ui/template-input";
 import { createClient } from "@/lib/supabase/client";
 import type { OutputProfile, FieldMapping } from "@/lib/export";
 
@@ -40,6 +49,7 @@ interface DBOutputProfile {
         include_header?: boolean;
     };
     is_default: boolean;
+    input_profile_id: string | null;
     created_at: string;
 }
 
@@ -68,6 +78,7 @@ export default function OutputProfilesPage() {
             delimiter: ";",
             include_header: true,
         },
+        input_profile_id: null as string | null,
     });
     const [isSaving, setIsSaving] = useState(false);
     const [inputProfiles, setInputProfiles] = useState<DBInputProfile[]>([]);
@@ -111,6 +122,7 @@ export default function OutputProfilesPage() {
                     delimiter: profile.format_options?.delimiter || ";",
                     include_header: profile.format_options?.include_header !== false,
                 },
+                input_profile_id: profile.input_profile_id || null,
             });
         } else {
             setEditingProfile(null);
@@ -120,6 +132,7 @@ export default function OutputProfilesPage() {
                 field_mappings: [{ ...DEFAULT_MAPPING }],
                 format: "csv",
                 format_options: { delimiter: ";", include_header: true },
+                input_profile_id: null,
             });
         }
         setIsDialogOpen(true);
@@ -178,6 +191,7 @@ export default function OutputProfilesPage() {
                 field_mappings: formData.field_mappings.filter(m => m.source && m.target),
                 format: formData.format,
                 format_options: formData.format_options,
+                input_profile_id: formData.input_profile_id,
             };
 
             if (editingProfile) {
@@ -234,6 +248,7 @@ export default function OutputProfilesPage() {
                 delimiter: profile.format_options?.delimiter || ";",
                 include_header: profile.format_options?.include_header !== false,
             },
+            input_profile_id: profile.input_profile_id || null,
         });
         setIsDialogOpen(true);
     };
@@ -250,12 +265,10 @@ export default function OutputProfilesPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold">Output Profiles</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Configure how data is mapped and formatted for export to shop systems
-                    </p>
+                    <h2 className="text-2xl font-bold tracking-tight">Output Profiles</h2>
+                    <p className="text-sm text-muted-foreground">Configure export field mappings and formats</p>
                 </div>
-                <Button onClick={() => handleOpenDialog()}>Add Profile</Button>
+                <Button onClick={() => handleOpenDialog()} size="sm">+ Add Profile</Button>
             </div>
 
             {/* Profiles List */}
@@ -332,11 +345,11 @@ export default function OutputProfilesPage() {
                                     {!profile.is_default && (
                                         <Button
                                             variant="ghost"
-                                            size="sm"
+                                            size="icon"
                                             onClick={() => handleDelete(profile.id)}
-                                            className="text-red-500"
+                                            className="h-8 w-8 text-muted-foreground hover:text-red-500"
                                         >
-                                            Delete
+                                            <Trash2 className="h-4 w-4" />
                                         </Button>
                                     )}
                                 </div>
@@ -381,35 +394,65 @@ export default function OutputProfilesPage() {
                             </div>
                         </div>
 
+                        {/* Input Profile Link */}
+                        <div className="space-y-2">
+                            <Label>Source Input Profile</Label>
+                            <p className="text-xs text-muted-foreground">
+                                Link to an input profile to enable field autocomplete
+                            </p>
+                            <Select
+                                value={formData.input_profile_id || "none"}
+                                onValueChange={(v) => setFormData({ ...formData, input_profile_id: v === "none" ? null : v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select input profile..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">None (manual field entry)</SelectItem>
+                                    {inputProfiles.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         {/* Format Options */}
                         <div className="grid grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label>Format</Label>
-                                <select
+                                <Select
                                     value={formData.format}
-                                    onChange={(e) => setFormData({ ...formData, format: e.target.value as "csv" | "json" })}
-                                    className="w-full h-9 rounded-md border px-3 text-sm"
+                                    onValueChange={(value) => setFormData({ ...formData, format: value as "csv" | "json" })}
                                 >
-                                    <option value="csv">CSV</option>
-                                    <option value="json">JSON</option>
-                                </select>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="csv">CSV</SelectItem>
+                                        <SelectItem value="json">JSON</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             {formData.format === "csv" && (
                                 <>
                                     <div className="space-y-2">
                                         <Label>Delimiter</Label>
-                                        <select
+                                        <Select
                                             value={formData.format_options.delimiter || ";"}
-                                            onChange={(e) => setFormData({
+                                            onValueChange={(value) => setFormData({
                                                 ...formData,
-                                                format_options: { ...formData.format_options, delimiter: e.target.value }
+                                                format_options: { ...formData.format_options, delimiter: value }
                                             })}
-                                            className="w-full h-9 rounded-md border px-3 text-sm"
                                         >
-                                            <option value=";">Semicolon (;)</option>
-                                            <option value=",">Comma (,)</option>
-                                            <option value="\t">Tab</option>
-                                        </select>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value=";">Semicolon (;)</SelectItem>
+                                                <SelectItem value=",">Comma (,)</SelectItem>
+                                                <SelectItem value="&#9;">Tab</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Include Header</Label>
@@ -441,19 +484,20 @@ export default function OutputProfilesPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {inputProfiles.length > 0 && (
-                                        <select
-                                            onChange={(e) => {
-                                                if (e.target.value) handleImportFromInputProfile(e.target.value);
-                                                e.target.value = "";
+                                        <Select
+                                            onValueChange={(value) => {
+                                                if (value) handleImportFromInputProfile(value);
                                             }}
-                                            className="h-8 rounded-md border px-2 text-xs bg-background"
-                                            defaultValue=""
                                         >
-                                            <option value="" disabled>Import fields...</option>
-                                            {inputProfiles.map(p => (
-                                                <option key={p.id} value={p.id}>{p.name}</option>
-                                            ))}
-                                        </select>
+                                            <SelectTrigger className="h-8 w-[140px] text-xs">
+                                                <SelectValue placeholder="Import fields..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {inputProfiles.map(p => (
+                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     )}
                                     <Button variant="outline" size="sm" onClick={handleAddMapping}>
                                         + Add
@@ -479,42 +523,90 @@ export default function OutputProfilesPage() {
                                             No mappings yet. Add one or import from an Input Profile.
                                         </div>
                                     )}
-                                    {formData.field_mappings.map((mapping, index) => (
-                                        <div key={index} className="grid grid-cols-12 gap-2 px-3 py-2 items-center hover:bg-muted/30">
-                                            <Input
-                                                placeholder="field_key"
-                                                value={mapping.source}
-                                                onChange={(e) => handleMappingChange(index, { source: e.target.value })}
-                                                className="col-span-3 h-8 font-mono text-xs"
-                                            />
-                                            <Input
-                                                placeholder="target_name"
-                                                value={mapping.target}
-                                                onChange={(e) => handleMappingChange(index, { target: e.target.value })}
-                                                className="col-span-3 h-8 font-mono text-xs"
-                                            />
-                                            <Input
-                                                placeholder="{field}"
-                                                value={mapping.template || ""}
-                                                onChange={(e) => handleMappingChange(index, { template: e.target.value })}
-                                                className="col-span-3 h-8 font-mono text-xs"
-                                            />
-                                            <Input
-                                                placeholder="fallback"
-                                                value={mapping.default_value || ""}
-                                                onChange={(e) => handleMappingChange(index, { default_value: e.target.value })}
-                                                className="col-span-2 h-8 text-xs"
-                                            />
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleRemoveMapping(index)}
-                                                className="col-span-1 h-8 w-8 p-0 text-muted-foreground hover:text-red-500"
-                                            >
-                                                ×
-                                            </Button>
-                                        </div>
-                                    ))}
+                                    {formData.field_mappings.map((mapping, index) => {
+                                        // Get available fields from linked input profile
+                                        const linkedProfile = inputProfiles.find(p => p.id === formData.input_profile_id);
+                                        const availableFields = linkedProfile?.fields || [];
+                                        const templateFields: TemplateFieldConfig[] = availableFields.map(f => ({
+                                            key: f.key,
+                                            label: f.label,
+                                        }));
+
+                                        return (
+                                            <div key={index} className="grid grid-cols-12 gap-2 px-3 py-2 items-center hover:bg-muted/30">
+                                                {/* Source: Select if linked profile, otherwise free text */}
+                                                {linkedProfile ? (
+                                                    <div className="col-span-3">
+                                                        <Select
+                                                            value={mapping.source || "__custom__"}
+                                                            onValueChange={(v) => {
+                                                                if (v === "__custom__") {
+                                                                    handleMappingChange(index, { source: "" });
+                                                                } else {
+                                                                    handleMappingChange(index, { source: v });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs font-mono">
+                                                                <SelectValue placeholder="Select field..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {availableFields.map(f => (
+                                                                    <SelectItem key={f.key} value={f.key}>
+                                                                        {f.key} <span className="text-muted-foreground">({f.label})</span>
+                                                                    </SelectItem>
+                                                                ))}
+                                                                <SelectItem value="__custom__">Custom...</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {mapping.source === "" && (
+                                                            <Input
+                                                                placeholder="custom_field"
+                                                                value={mapping.source}
+                                                                onChange={(e) => handleMappingChange(index, { source: e.target.value })}
+                                                                className="h-8 font-mono text-xs mt-1"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <Input
+                                                        placeholder="field_key"
+                                                        value={mapping.source}
+                                                        onChange={(e) => handleMappingChange(index, { source: e.target.value })}
+                                                        className="col-span-3 h-8 font-mono text-xs"
+                                                    />
+                                                )}
+                                                <Input
+                                                    placeholder="target_name"
+                                                    value={mapping.target}
+                                                    onChange={(e) => handleMappingChange(index, { target: e.target.value })}
+                                                    className="col-span-3 h-8 font-mono text-xs"
+                                                />
+                                                <div className="col-span-3">
+                                                    <TemplateInput
+                                                        value={mapping.template || ""}
+                                                        onChange={(v) => handleMappingChange(index, { template: v })}
+                                                        fields={templateFields}
+                                                        placeholder="{field}"
+                                                    />
+                                                </div>
+                                                <Input
+                                                    placeholder="fallback"
+                                                    value={mapping.default_value || ""}
+                                                    onChange={(e) => handleMappingChange(index, { default_value: e.target.value })}
+                                                    className="col-span-2 h-8 text-xs"
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleRemoveMapping(index)}
+                                                    className="col-span-1 h-8 w-8 p-0 text-muted-foreground hover:text-red-500"
+                                                >
+                                                    ×
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

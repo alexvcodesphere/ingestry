@@ -7,27 +7,34 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronRight, FileInput, FileOutput, BookOpen } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 const configSections = [
     {
         title: "Input Profiles",
-        description: "Configure extraction fields, normalization, and SKU generation",
+        description: "Extraction fields and normalization",
         href: "/dashboard/settings/processing",
-        icon: "⚙️",
+        icon: FileInput,
     },
     {
         title: "Output Profiles",
-        description: "Configure field mappings and formats for export",
+        description: "Field mappings for export",
         href: "/dashboard/settings/output",
-        icon: "📤",
+        icon: FileOutput,
     },
     {
         title: "Code Lookups",
-        description: "Manage brand, category, and color code mappings",
+        description: "Brand, category, and color codes",
         href: "/dashboard/settings/lookups",
-        icon: "📋",
+        icon: BookOpen,
     },
 ];
 
@@ -36,6 +43,7 @@ const integrations = [
     { name: "Xentral ERP", status: "env", statusLabel: "Configured via .env" },
     { name: "Shopify", status: "mock", statusLabel: "Mock Mode" },
     { name: "OpenAI API", status: "active", statusLabel: "Active" },
+    { name: "Gemini API", status: "active", statusLabel: "Active" },
 ];
 
 function ThemeToggle() {
@@ -44,7 +52,6 @@ function ThemeToggle() {
 
     useEffect(() => {
         setMounted(true);
-        // Check for saved preference or system preference
         const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         const initialTheme = savedTheme || systemTheme;
@@ -64,14 +71,13 @@ function ThemeToggle() {
     return (
         <button
             onClick={toggleTheme}
-            className="relative h-10 w-20 rounded-full bg-muted p-1 transition-colors hover:bg-muted/80"
+            className="relative h-6 w-11 rounded-full bg-muted p-0.5 transition-colors hover:bg-muted/80"
             aria-label="Toggle theme"
         >
             <div
-                className={`absolute top-1 h-8 w-8 rounded-full bg-primary transition-all duration-300 flex items-center justify-center ${theme === "dark" ? "left-11" : "left-1"
-                    }`}
+                className={`h-5 w-5 rounded-full bg-primary transition-all duration-200 flex items-center justify-center ${theme === "dark" ? "translate-x-5" : "translate-x-0"}`}
             >
-                <span className="text-primary-foreground text-sm">
+                <span className="text-primary-foreground text-[10px]">
                     {theme === "dark" ? "🌙" : "☀️"}
                 </span>
             </div>
@@ -98,114 +104,161 @@ function NormalizationTesterToggle() {
     if (!mounted) return null;
 
     return (
-        <div className="flex items-center justify-between p-4 border rounded-xl bg-muted/30">
-            <div>
-                <p className="font-medium">Normalization Tester</p>
-                <p className="text-sm text-muted-foreground">
-                    Show test panel on Code Lookups page
-                </p>
-            </div>
-            <button
-                onClick={toggle}
-                className="relative h-10 w-20 rounded-full bg-muted p-1 transition-colors hover:bg-muted/80"
-                aria-label="Toggle normalization tester"
-            >
-                <div
-                    className={`absolute top-1 h-8 w-8 rounded-full transition-all duration-300 flex items-center justify-center ${enabled ? "left-11 bg-primary" : "left-1 bg-muted-foreground/30"
-                        }`}
-                >
-                    <span className="text-primary-foreground text-sm">
-                        {enabled ? "✓" : ""}
-                    </span>
-                </div>
-            </button>
-        </div>
+        <button
+            onClick={toggle}
+            className="relative h-6 w-11 rounded-full bg-muted p-0.5 transition-colors hover:bg-muted/80"
+            aria-label="Toggle normalization tester"
+        >
+            <div
+                className={`h-5 w-5 rounded-full transition-all duration-200 flex items-center justify-center ${enabled ? "translate-x-5 bg-primary" : "translate-x-0 bg-muted-foreground/40"}`}
+            />
+        </button>
+    );
+}
+
+function VisionModelSelector() {
+    const [model, setModel] = useState<string>("gpt-4o");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    const models = [
+        { value: "gpt-4o", label: "GPT-4o", provider: "OpenAI" },
+        { value: "gemini-3-flash", label: "Gemini 3 Flash", provider: "Google" },
+        { value: "gemini-3-pro", label: "Gemini 3 Pro", provider: "Google" },
+    ];
+
+    useEffect(() => {
+        fetch("/api/settings/vision-model")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    setModel(data.data.vision_model);
+                }
+            })
+            .finally(() => setLoading(false));
+    }, []);
+
+    const handleChange = async (newModel: string) => {
+        setSaving(true);
+        try {
+            const res = await fetch("/api/settings/vision-model", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ vision_model: newModel }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setModel(newModel);
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return <span className="text-sm text-muted-foreground">Loading...</span>;
+    }
+
+    return (
+        <Select
+            value={model}
+            onValueChange={handleChange}
+            disabled={saving}
+        >
+            <SelectTrigger className="h-8 w-48">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                {models.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                        {m.label} ({m.provider})
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }
 
 export default function SettingsPage() {
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             {/* Header */}
             <div>
-                <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
-                <p className="text-muted-foreground">
-                    Configure processing profiles, lookups, and integrations
+                <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+                <p className="text-sm text-muted-foreground">
+                    Configure profiles, lookups, and integrations
                 </p>
             </div>
 
-            {/* Configuration Sections */}
-            <div className="grid gap-6 md:grid-cols-2">
+            {/* Navigation Cards */}
+            <div className="grid gap-3 md:grid-cols-3">
                 {configSections.map((section) => (
                     <Link key={section.href} href={section.href}>
-                        <Card className="cursor-pointer h-full hover:border-primary/50 transition-colors">
-                            <CardHeader>
+                        <Card className="group cursor-pointer h-full hover:border-primary/50 hover:bg-muted/30 transition-all">
+                            <CardContent className="flex items-center justify-between p-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-2xl">
-                                        {section.icon}
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <section.icon className="h-4 w-4" />
                                     </div>
                                     <div>
-                                        <CardTitle>{section.title}</CardTitle>
-                                        <CardDescription className="mt-1">{section.description}</CardDescription>
+                                        <p className="text-sm font-medium">{section.title}</p>
+                                        <p className="text-xs text-muted-foreground">{section.description}</p>
                                     </div>
                                 </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Button variant="outline" size="sm" className="w-full">
-                                    Manage →
-                                </Button>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                             </CardContent>
                         </Card>
                     </Link>
                 ))}
             </div>
 
-            {/* Appearance */}
+            {/* Preferences */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <span className="text-xl">🎨</span>
-                        Appearance
-                    </CardTitle>
-                    <CardDescription>
-                        Customize the look and feel of the application
-                    </CardDescription>
+                <CardHeader className="border-b">
+                    <CardTitle className="text-base font-medium">Preferences</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between p-4 border rounded-xl bg-muted/30">
-                        <div>
-                            <p className="font-medium">Theme</p>
-                            <p className="text-sm text-muted-foreground">
-                                Switch between light and dark mode
-                            </p>
+                <CardContent className="p-0">
+                    <div className="divide-y">
+                        <div className="flex items-center justify-between px-6 py-4">
+                            <div>
+                                <p className="text-sm font-medium">Theme</p>
+                                <p className="text-xs text-muted-foreground">Light or dark mode</p>
+                            </div>
+                            <ThemeToggle />
                         </div>
-                        <ThemeToggle />
+                        <div className="flex items-center justify-between px-6 py-4">
+                            <div>
+                                <p className="text-sm font-medium">Normalization Tester</p>
+                                <p className="text-xs text-muted-foreground">Show test panel on Lookups page</p>
+                            </div>
+                            <NormalizationTesterToggle />
+                        </div>
+                        <div className="flex items-center justify-between px-6 py-4">
+                            <div>
+                                <p className="text-sm font-medium">AI Vision Model</p>
+                                <p className="text-xs text-muted-foreground">Model used for PDF extraction</p>
+                            </div>
+                            <VisionModelSelector />
+                        </div>
                     </div>
-                    <NormalizationTesterToggle />
                 </CardContent>
             </Card>
 
             {/* Integrations */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <span className="text-xl">🔌</span>
-                        Integrations
-                    </CardTitle>
-                    <CardDescription>
-                        External service connections configured via environment variables
-                    </CardDescription>
+                <CardHeader className="border-b">
+                    <CardTitle className="text-base font-medium">Integrations</CardTitle>
                 </CardHeader>
-                <CardContent>
-                    <div className="space-y-3">
+                <CardContent className="p-0">
+                    <div className="divide-y">
                         {integrations.map((integration) => (
                             <div
                                 key={integration.name}
-                                className="flex items-center justify-between p-4 border rounded-xl bg-muted/30"
+                                className="flex items-center justify-between px-6 py-4"
                             >
-                                <span className="font-medium">{integration.name}</span>
+                                <span className="text-sm font-medium">{integration.name}</span>
                                 <span
-                                    className={`text-sm px-3 py-1.5 rounded-full font-medium ${integration.status === "active"
+                                    className={`text-xs px-2 py-1 rounded-full font-medium ${integration.status === "active"
                                         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
                                         : integration.status === "mock"
                                             ? "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"

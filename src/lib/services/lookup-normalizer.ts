@@ -16,7 +16,9 @@ export interface NormalizationResult {
     matchedEntry?: {
         name: string;
         aliases?: string[];
+        extra_data?: Record<string, unknown>;
     };
+    extra_data?: Record<string, unknown>;  // Custom column values for templates
     distance?: number; // For fuzzy matches
     originalPart?: string; // For compound matches, shows which part matched
 }
@@ -91,10 +93,10 @@ export async function normalizeWithDetails(
     const supabase = await createClient();
     const normalized = rawValue.toLowerCase().trim();
 
-    // Fetch all lookups for this type
+    // Fetch all lookups for this type, including extra_data for custom columns
     const { data: lookups } = await supabase
         .from('code_lookups')
-        .select('name, code, aliases')
+        .select('name, code, aliases, extra_data')
         .eq('field_key', lookupType);
 
     if (!lookups || lookups.length === 0) {
@@ -108,7 +110,8 @@ export async function normalizeWithDetails(
                 normalized: lookup.name,
                 code: lookup.code,
                 matchType: 'exact',
-                matchedEntry: { name: lookup.name, aliases: lookup.aliases }
+                matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
+                extra_data: lookup.extra_data || {}
             };
         }
     }
@@ -124,7 +127,8 @@ export async function normalizeWithDetails(
                     normalized: lookup.name,
                     code: lookup.code,
                     matchType: 'alias',
-                    matchedEntry: { name: lookup.name, aliases: lookup.aliases }
+                    matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
+                    extra_data: lookup.extra_data || {}
                 };
             }
         }
@@ -159,7 +163,8 @@ export async function normalizeWithDetails(
                 normalized: bestMatch.lookup.name,
                 code: bestMatch.lookup.code,
                 matchType: 'fuzzy',
-                matchedEntry: { name: bestMatch.lookup.name, aliases: bestMatch.lookup.aliases },
+                matchedEntry: { name: bestMatch.lookup.name, aliases: bestMatch.lookup.aliases, extra_data: bestMatch.lookup.extra_data },
+                extra_data: bestMatch.lookup.extra_data || {},
                 distance: bestMatch.distance
             };
         }
@@ -178,7 +183,8 @@ export async function normalizeWithDetails(
                         normalized: lookup.name,
                         code: lookup.code,
                         matchType: 'compound',
-                        matchedEntry: { name: lookup.name, aliases: lookup.aliases },
+                        matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
+                        extra_data: lookup.extra_data || {},
                         originalPart: part
                     };
                 }
@@ -195,7 +201,8 @@ export async function normalizeWithDetails(
                             normalized: lookup.name,
                             code: lookup.code,
                             matchType: 'compound',
-                            matchedEntry: { name: lookup.name, aliases: lookup.aliases },
+                            matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
+                            extra_data: lookup.extra_data || {},
                             originalPart: part
                         };
                     }

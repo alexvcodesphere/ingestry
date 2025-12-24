@@ -2,16 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { createClient } from "@/lib/supabase/client";
 import type { Job } from "@/types";
 
@@ -39,7 +32,7 @@ function Duration({ start, end }: { start: Date; end: Date }) {
     return <span className="tabular-nums">{mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}</span>;
 }
 
-// Status badge component with more vibrant colors
+// Status badge component
 function StatusBadge({ status }: { status: string }) {
     const config: Record<string, { label: string; className: string; dotClass: string }> = {
         completed: {
@@ -72,22 +65,20 @@ function StatusBadge({ status }: { status: string }) {
     );
 }
 
-// Stat card component for consistent styling
+// Stat card component
 function StatCard({
     title,
     value,
-    subtitle,
     icon,
     accentColor = "primary"
 }: {
     title: string;
     value: number | string;
-    subtitle: string;
     icon: string;
     accentColor?: "primary" | "success" | "warning" | "danger";
 }) {
     const colorClasses = {
-        primary: "text-primary",
+        primary: "text-foreground",
         success: "text-emerald-600 dark:text-emerald-400",
         warning: "text-amber-600 dark:text-amber-400",
         danger: "text-rose-600 dark:text-rose-400",
@@ -101,16 +92,15 @@ function StatCard({
     };
 
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBgClasses[accentColor]}`}>
-                    <span className="text-lg">{icon}</span>
+        <Card className="py-4">
+            <CardContent className="flex items-center gap-3 p-0 px-4">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconBgClasses[accentColor]}`}>
+                    <span className="text-sm">{icon}</span>
                 </div>
-            </CardHeader>
-            <CardContent>
-                <div className={`text-4xl font-bold tracking-tight ${colorClasses[accentColor]}`}>{value}</div>
-                <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
+                <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground truncate">{title}</p>
+                    <div className={`text-xl font-semibold tracking-tight ${colorClasses[accentColor]}`}>{value}</div>
+                </div>
             </CardContent>
         </Card>
     );
@@ -119,28 +109,46 @@ function StatCard({
 
 export default function DashboardPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
+    const [totalJobs, setTotalJobs] = useState(0);
     const [orderCount, setOrderCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
 
     const fetchData = useCallback(async () => {
         const supabase = createClient();
+        const offset = page * pageSize;
 
-        const [jobsResult, ordersResult] = await Promise.all([
-            supabase.from("jobs").select("*").order("created_at", { ascending: false }).limit(20),
+        const [jobsResult, jobsCountResult, ordersResult] = await Promise.all([
+            supabase
+                .from("jobs")
+                .select("*")
+                .order("created_at", { ascending: false })
+                .range(offset, offset + pageSize - 1),
+            supabase.from("jobs").select("*", { count: "exact", head: true }),
             supabase.from("draft_orders").select("*", { count: "exact", head: true }),
         ]);
 
         if (jobsResult.data) setJobs(jobsResult.data);
+        if (jobsCountResult.count !== null) setTotalJobs(jobsCountResult.count);
         if (ordersResult.count !== null) setOrderCount(ordersResult.count);
         setIsLoading(false);
-    }, []);
+    }, [page, pageSize]);
 
     useEffect(() => {
         fetchData();
-        // Refresh every 5 seconds for processing jobs
         const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }, [fetchData]);
+
+    const handlePageChange = (newPage: number) => {
+        setPage(newPage);
+    };
+
+    const handlePageSizeChange = (newSize: number) => {
+        setPageSize(newSize);
+        setPage(0);
+    };
 
     if (isLoading) {
         return (
@@ -152,135 +160,138 @@ export default function DashboardPage() {
 
     const processingCount = jobs.filter((j) => j.status === "processing").length;
     const completedCount = jobs.filter((j) => j.status === "completed").length;
-    // failedCount available for future use in error stats
-    const _failedCount = jobs.filter((j) => j.status === "failed").length;
+
+    const columns: Column<Job>[] = [
+        {
+            key: "id",
+            header: "Job ID",
+            render: (job) => (
+                <span className="font-mono text-xs text-muted-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5">{job.id.slice(0, 8)}</span>
+                </span>
+            ),
+        },
+        {
+            key: "name",
+            header: "Name",
+            render: (job) => {
+                const jobInput = job.input as { fileName?: string; orderName?: string };
+                const displayName = jobInput?.orderName || jobInput?.fileName || "—";
+                return <span className="font-medium max-w-[200px] truncate block">{displayName}</span>;
+            },
+        },
+        {
+            key: "type",
+            header: "Type",
+            render: (job) => (
+                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize">
+                    {job.type.replace("_", " ")}
+                </span>
+            ),
+        },
+        {
+            key: "status",
+            header: "Status",
+            render: (job) => <StatusBadge status={job.status} />,
+        },
+        {
+            key: "created_at",
+            header: "Created",
+            render: (job) => (
+                <span className="text-sm text-muted-foreground">
+                    {new Date(job.created_at).toLocaleString()}
+                </span>
+            ),
+        },
+        {
+            key: "duration",
+            header: "Duration",
+            render: (job) => {
+                const createdAt = new Date(job.created_at);
+                const updatedAt = job.updated_at ? new Date(job.updated_at) : new Date();
+                const isRunning = job.status === "processing" || job.status === "pending";
+                return (
+                    <span className="text-sm text-muted-foreground">
+                        {isRunning ? (
+                            <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                <LiveTimer startTime={createdAt} />
+                            </span>
+                        ) : (
+                            <Duration start={createdAt} end={updatedAt} />
+                        )}
+                    </span>
+                );
+            },
+        },
+        {
+            key: "actions",
+            header: "Actions",
+            className: "text-right",
+            render: (job) => {
+                const jobResult = job.result as { draftOrderId?: string } | null;
+                return jobResult?.draftOrderId ? (
+                    <Link href={`/dashboard/orders/${jobResult.draftOrderId}`}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <span className="text-lg">→</span>
+                        </Button>
+                    </Link>
+                ) : null;
+            },
+        },
+    ];
 
     return (
         <div className="space-y-8">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-                    <p className="mt-1 text-muted-foreground">Process orders, validate products, push to shop systems</p>
+                    <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Process orders, validate products, push to shop systems</p>
                 </div>
                 <Link href="/dashboard/orders/new">
-                    <Button className="gap-2">
-                        <span>＋</span>
-                        New Order
-                    </Button>
+                    <Button>New Order</Button>
                 </Link>
             </div>
 
-            {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                    title="Total Orders"
-                    value={orderCount}
-                    subtitle="Draft orders created"
-                    icon="📦"
-                    accentColor="primary"
-                />
-                <StatCard
-                    title="Total Jobs"
-                    value={jobs.length}
-                    subtitle="Processing jobs"
-                    icon="⚡"
-                    accentColor="primary"
-                />
+            {/* Stat Cards */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatCard title="Total Jobs" value={totalJobs} icon="📋" />
+                <StatCard title="Orders" value={orderCount} icon="📦" />
                 <StatCard
                     title="Completed"
                     value={completedCount}
-                    subtitle="Successfully processed"
                     icon="✓"
                     accentColor="success"
                 />
                 <StatCard
                     title="Processing"
                     value={processingCount}
-                    subtitle="Currently running"
-                    icon="◎"
+                    icon="⏳"
                     accentColor="warning"
                 />
             </div>
 
             {/* Jobs Table */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30 px-6">
-                    <div>
-                        <CardTitle className="text-lg">Recent Jobs</CardTitle>
-                        <p className="text-sm text-muted-foreground">Your latest processing jobs</p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={fetchData} className="gap-2">
+            <DataTable
+                title="Recent Jobs"
+                titleAction={
+                    <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1.5 h-8 text-muted-foreground hover:text-foreground">
                         <span className="text-xs">↻</span>
                         Refresh
                     </Button>
-                </CardHeader>
-                <CardContent className="p-0">
-                    {jobs.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-center">
-                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                                <span className="text-2xl">📄</span>
-                            </div>
-                            <p className="font-medium text-foreground">No jobs yet</p>
-                            <p className="mt-1 text-sm text-muted-foreground">Upload an order to get started!</p>
-                        </div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="hover:bg-transparent">
-                                    <TableHead className="pl-6">Job ID</TableHead>
-                                    <TableHead>File</TableHead>
-                                    <TableHead>Type</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Created</TableHead>
-                                    <TableHead className="pr-6">Duration</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {jobs.map((job) => {
-                                    const createdAt = new Date(job.created_at);
-                                    const updatedAt = job.updated_at ? new Date(job.updated_at) : new Date();
-                                    const isRunning = job.status === "processing" || job.status === "pending";
-                                    const fileName = (job.input as { fileName?: string })?.fileName;
-
-                                    return (
-                                        <TableRow key={job.id} className="group">
-                                            <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
-                                                <span className="rounded bg-muted px-1.5 py-0.5">{job.id.slice(0, 8)}</span>
-                                            </TableCell>
-                                            <TableCell className="font-medium max-w-[200px] truncate">
-                                                {fileName || "—"}
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize">
-                                                    {job.type.replace("_", " ")}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell>
-                                                <StatusBadge status={job.status} />
-                                            </TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {createdAt.toLocaleString()}
-                                            </TableCell>
-                                            <TableCell className="pr-6 text-sm text-muted-foreground">
-                                                {isRunning ? (
-                                                    <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                        <LiveTimer startTime={createdAt} />
-                                                    </span>
-                                                ) : (
-                                                    <Duration start={createdAt} end={updatedAt} />
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+                }
+                columns={columns}
+                data={jobs}
+                keyExtractor={(job) => job.id}
+                isLoading={isLoading}
+                emptyMessage="No jobs yet. Upload an order to get started!"
+                page={page}
+                pageSize={pageSize}
+                total={totalJobs}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+            />
         </div>
     );
 }
-

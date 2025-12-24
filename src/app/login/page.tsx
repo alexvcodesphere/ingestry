@@ -44,7 +44,7 @@ export default function LoginPage() {
                         Sign in to your account
                     </p>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-6">
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>

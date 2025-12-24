@@ -126,6 +126,7 @@ export interface ProcessingContext {
     source_job_id?: string;
     extraction_profile_id?: string;
     sku_template_id?: string;
+    order_name?: string;  // User-provided name for this processing run
     options?: {
         auto_generate_sku: boolean;
         normalize_colors: boolean;
@@ -180,7 +181,19 @@ export interface CodeLookup {
     aliases?: string[];
     sort_order?: number;
     tenant_id?: string;
+    extra_data?: Record<string, unknown>;  // Custom column values
     created_at?: string;
+}
+
+export interface LookupColumnDef {
+    id: string;
+    tenant_id: string;
+    field_key: string;
+    column_key: string;
+    column_label: string;
+    column_type: 'text' | 'number' | 'boolean';
+    is_default: boolean;
+    sort_order: number;
 }
 
 // Processing profile type for database

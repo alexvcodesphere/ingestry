@@ -7,17 +7,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Trash2, Pencil } from "lucide-react";
 import type { DraftOrder, DraftOrderStatus } from "@/types";
 
@@ -50,10 +42,13 @@ const statusConfig: Record<DraftOrderStatus, { label: string; className: string 
 
 export default function OrdersPage() {
     const [orders, setOrders] = useState<DraftOrder[]>([]);
+    const [totalOrders, setTotalOrders] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<DraftOrderStatus | "all">("all");
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingName, setEditingName] = useState("");
+    const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
 
     const fetchOrders = useCallback(async () => {
         setIsLoading(true);
@@ -62,20 +57,22 @@ export default function OrdersPage() {
             if (statusFilter !== "all") {
                 params.set("status", statusFilter);
             }
-            params.set("limit", "50");
+            params.set("limit", String(pageSize));
+            params.set("offset", String(page * pageSize));
 
             const response = await fetch(`/api/draft-orders?${params}`);
             const result = await response.json();
 
             if (result.success) {
                 setOrders(result.data);
+                setTotalOrders(result.pagination?.total || result.data.length);
             }
         } catch (error) {
             console.error("Failed to fetch orders:", error);
         } finally {
             setIsLoading(false);
         }
-    }, [statusFilter]);
+    }, [statusFilter, page, pageSize]);
 
     useEffect(() => {
         fetchOrders();
@@ -115,7 +112,6 @@ export default function OrdersPage() {
                 body: JSON.stringify({ name: editingName.trim() }),
             });
             if (response.ok) {
-                // Update local state immediately
                 setOrders(orders.map(o => 
                     o.id === orderId ? { ...o, name: editingName.trim() } : o
                 ));
@@ -132,6 +128,15 @@ export default function OrdersPage() {
         } else if (e.key === "Escape") {
             setEditingId(null);
         }
+    };
+
+    const handlePageChange = (newPage: number) => {
+        setPage(newPage);
+    };
+
+    const handlePageSizeChange = (newSize: number) => {
+        setPageSize(newSize);
+        setPage(0);
     };
 
     const getStatusBadge = (status: DraftOrderStatus) => {
@@ -162,29 +167,92 @@ export default function OrdersPage() {
         return order.name || order.source_file_name || `Order ${order.id.slice(0, 8)}`;
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            </div>
-        );
-    }
+    const columns: Column<DraftOrder>[] = [
+        {
+            key: "name",
+            header: "Name",
+            render: (order) => (
+                editingId === order.id ? (
+                    <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => handleSaveRename(order.id)}
+                        onKeyDown={(e) => handleKeyDown(e, order.id)}
+                        autoFocus
+                        className="h-8 w-48"
+                    />
+                ) : (
+                    <div className="flex items-center gap-2 group">
+                        <span className="font-medium">
+                            {getOrderDisplayName(order)}
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleStartRename(order)}
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <Pencil className="h-3 w-3" />
+                        </Button>
+                    </div>
+                )
+            ),
+        },
+        {
+            key: "status",
+            header: "Status",
+            render: (order) => getStatusBadge(order.status),
+        },
+        {
+            key: "shop_system",
+            header: "Shop System",
+            render: (order) => getShopSystemBadge(order.shop_system),
+        },
+        {
+            key: "created_at",
+            header: "Created",
+            render: (order) => (
+                <span className="text-sm text-muted-foreground">
+                    {new Date(order.created_at).toLocaleDateString()}
+                </span>
+            ),
+        },
+        {
+            key: "actions",
+            header: "Actions",
+            className: "text-right",
+            render: (order) => (
+                <div className="flex items-center justify-end gap-1">
+                    <Link href={`/dashboard/orders/${order.id}`}>
+                        <Button variant="outline" size="sm">
+                            View
+                        </Button>
+                    </Link>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(order.id)}
+                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
+            ),
+        },
+    ];
 
     return (
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Orders</h2>
-                    <p className="text-muted-foreground">
+                    <h2 className="text-2xl font-bold tracking-tight">Orders</h2>
+                    <p className="text-sm text-muted-foreground">
                         Manage your order processing pipeline
                     </p>
                 </div>
                 <Link href="/dashboard/orders/new">
-                    <Button>
-                        <span className="mr-2">+</span>
-                        New Order
-                    </Button>
+                    <Button>+ New Order</Button>
                 </Link>
             </div>
 
@@ -194,122 +262,47 @@ export default function OrdersPage() {
                 <Button
                     variant={statusFilter === "all" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setStatusFilter("all")}
+                    onClick={() => { setStatusFilter("all"); setPage(0); }}
                 >
                     All
                 </Button>
                 <Button
                     variant={statusFilter === "pending_review" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setStatusFilter("pending_review")}
+                    onClick={() => { setStatusFilter("pending_review"); setPage(0); }}
                 >
                     Pending Review
                 </Button>
                 <Button
                     variant={statusFilter === "approved" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setStatusFilter("approved")}
+                    onClick={() => { setStatusFilter("approved"); setPage(0); }}
                 >
                     Approved
                 </Button>
                 <Button
                     variant={statusFilter === "exported" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setStatusFilter("exported")}
+                    onClick={() => { setStatusFilter("exported"); setPage(0); }}
                 >
                     Exported
                 </Button>
             </div>
 
             {/* Orders Table */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Recent Orders</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {orders.length === 0 ? (
-                        <div className="text-center py-12">
-                            <p className="text-muted-foreground mb-4">
-                                No orders found. Create your first order to get started.
-                            </p>
-                            <Link href="/dashboard/orders/new">
-                                <Button>Create Order</Button>
-                            </Link>
-                        </div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Shop System</TableHead>
-                                    <TableHead>Created</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {orders.map((order) => (
-                                    <TableRow key={order.id}>
-                                        <TableCell>
-                                            {editingId === order.id ? (
-                                                <Input
-                                                    value={editingName}
-                                                    onChange={(e) => setEditingName(e.target.value)}
-                                                    onBlur={() => handleSaveRename(order.id)}
-                                                    onKeyDown={(e) => handleKeyDown(e, order.id)}
-                                                    autoFocus
-                                                    className="h-8 w-48"
-                                                />
-                                            ) : (
-                                                <div className="flex items-center gap-2 group">
-                                                    <span className="font-medium">
-                                                        {getOrderDisplayName(order)}
-                                                    </span>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleStartRename(order)}
-                                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <Pencil className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            {getStatusBadge(order.status)}
-                                        </TableCell>
-                                        <TableCell>
-                                            {getShopSystemBadge(order.shop_system)}
-                                        </TableCell>
-                                        <TableCell>
-                                            {new Date(order.created_at).toLocaleDateString()}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <Link href={`/dashboard/orders/${order.id}`}>
-                                                    <Button variant="outline" size="sm">
-                                                        View
-                                                    </Button>
-                                                </Link>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleDelete(order.id)}
-                                                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+            <DataTable
+                title="Orders"
+                columns={columns}
+                data={orders}
+                keyExtractor={(order) => order.id}
+                isLoading={isLoading}
+                emptyMessage="No orders found. Create your first order to get started."
+                page={page}
+                pageSize={pageSize}
+                total={totalOrders}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+            />
         </div>
     );
 }
-

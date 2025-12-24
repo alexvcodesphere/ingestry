@@ -15,6 +15,7 @@ interface FieldConfig {
     normalize_with?: string;
     use_template?: boolean;   // if true, value is computed from template
     template?: string;        // template string e.g. "{brand} - {name}"
+    fallback?: string;        // default value if extraction returns empty
 }
 
 /**

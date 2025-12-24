@@ -15,6 +15,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { mapRecords, type OutputProfile, type DataRecord, type FieldMapping } from "@/lib/export";
 
@@ -164,18 +171,22 @@ export function ExportDialog({ open, onOpenChange, orderId, records }: ExportDia
                         {isLoading ? (
                             <div className="h-9 bg-muted animate-pulse rounded-md" />
                         ) : (
-                            <select
+                            <Select
                                 value={selectedProfileId}
-                                onChange={(e) => setSelectedProfileId(e.target.value)}
-                                className="w-full h-9 rounded-md border px-3 text-sm"
+                                onValueChange={setSelectedProfileId}
                             >
-                                {profiles.map(profile => (
-                                    <option key={profile.id} value={profile.id}>
-                                        {profile.name} ({profile.format.toUpperCase()})
-                                        {profile.is_default ? " - Default" : ""}
-                                    </option>
-                                ))}
-                            </select>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {profiles.map(profile => (
+                                        <SelectItem key={profile.id} value={profile.id}>
+                                            {profile.name} ({profile.format.toUpperCase()})
+                                            {profile.is_default ? " - Default" : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
                         {selectedProfile?.description && (
                             <p className="text-xs text-muted-foreground">

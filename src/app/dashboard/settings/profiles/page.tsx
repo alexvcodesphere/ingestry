@@ -17,6 +17,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import type { ExtractionProfile, FieldDefinition } from "@/types";
 
@@ -302,15 +309,19 @@ export default function ExtractionProfilesPage() {
                                             onChange={(e) => handleFieldChange(index, { label: e.target.value })}
                                             className="flex-1"
                                         />
-                                        <select
+                                        <Select
                                             value={field.type}
-                                            onChange={(e) => handleFieldChange(index, { type: e.target.value as FieldDefinition['type'] })}
-                                            className="h-9 rounded-md border px-2 text-sm"
+                                            onValueChange={(value) => handleFieldChange(index, { type: value as FieldDefinition['type'] })}
                                         >
-                                            {FIELD_TYPES.map(t => (
-                                                <option key={t} value={t}>{t}</option>
-                                            ))}
-                                        </select>
+                                            <SelectTrigger className="w-24">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FIELD_TYPES.map(t => (
+                                                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <label className="flex items-center gap-1 text-sm">
                                             <input
                                                 type="checkbox"

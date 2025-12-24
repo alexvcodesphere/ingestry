@@ -1,16 +1,9 @@
 /**
- * GPT-based document extraction client
+ * OpenAI Vision Extraction Client
  * Uses OpenAI Responses API with direct PDF input for vision-based extraction
  */
 
-export interface GPTExtractionResult {
-    products: GPTExtractedProduct[];
-    rawResponse: string;
-    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
-}
-
-// Dynamic product type - fields come from processing profile
-export type GPTExtractedProduct = Record<string, string>;
+import type { ExtractionResult, ExtractedProduct } from './types';
 
 const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 
@@ -18,17 +11,17 @@ const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-4o";
 
 /**
- * Extract products from PDF using GPT-4o Vision via Responses API
+ * Extract products from PDF using OpenAI GPT-4o Vision via Responses API
  * Sends the PDF directly as base64 - no conversion needed
  * @param pdfBuffer PDF file as Buffer
  * @param systemPrompt System prompt from processing profile (required)
  * @param options Additional options like model selection
  */
-export async function extractWithGPT(
+export async function extractWithOpenAI(
     pdfBuffer: Buffer,
     systemPrompt: string,
     options: { model?: string } = {}
-): Promise<GPTExtractionResult> {
+): Promise<ExtractionResult> {
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
@@ -45,8 +38,8 @@ export async function extractWithGPT(
     const base64Pdf = pdfBuffer.toString("base64");
     const pdfDataUri = `data:application/pdf;base64,${base64Pdf}`;
 
-    console.log(`[GPT Vision] Using model: ${model}`);
-    console.log(`[GPT Vision] PDF size: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
+    console.log(`[OpenAI Vision] Using model: ${model}`);
+    console.log(`[OpenAI Vision] PDF size: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
 
     const startTime = Date.now();
 
@@ -77,7 +70,7 @@ export async function extractWithGPT(
         },
     };
 
-    console.log(`[GPT Vision] Sending request to Responses API...`);
+    console.log(`[OpenAI Vision] Sending request to Responses API...`);
 
     const response = await fetch(OPENAI_RESPONSES_API_URL, {
         method: "POST",
@@ -89,12 +82,12 @@ export async function extractWithGPT(
     });
 
     const duration = Date.now() - startTime;
-    console.log(`[GPT Vision] API call took ${duration}ms`);
+    console.log(`[OpenAI Vision] API call took ${duration}ms`);
 
     if (!response.ok) {
         const error = await response.text();
-        console.error("[GPT Vision] API error:", error);
-        throw new Error(`GPT Vision API error: ${response.status} - ${error}`);
+        console.error("[OpenAI Vision] API error:", error);
+        throw new Error(`OpenAI Vision API error: ${response.status} - ${error}`);
     }
 
     const data = await response.json();
@@ -110,12 +103,12 @@ export async function extractWithGPT(
         totalTokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0),
     } : undefined;
 
-    console.log(`[GPT Vision] Raw response length: ${rawResponse.length}`);
-    console.log(`[GPT Vision] Tokens used: ${usage?.totalTokens || "unknown"}`);
-    console.log(`[GPT Vision] Response preview: ${rawResponse.substring(0, 200)}...`);
+    console.log(`[OpenAI Vision] Raw response length: ${rawResponse.length}`);
+    console.log(`[OpenAI Vision] Tokens used: ${usage?.totalTokens || "unknown"}`);
+    console.log(`[OpenAI Vision] Response preview: ${rawResponse.substring(0, 200)}...`);
 
     // Parse the JSON response
-    let products: GPTExtractedProduct[] = [];
+    let products: ExtractedProduct[] = [];
     try {
         // Clean the response (remove any markdown if present)
         let cleanedResponse = rawResponse.trim();
@@ -139,7 +132,7 @@ export async function extractWithGPT(
                 : [];
 
         products = productArray.map((p: Record<string, unknown>) => {
-            // Pass through all fields from GPT response dynamically
+            // Pass through all fields from response dynamically
             const product: Record<string, string> = {};
             for (const [key, value] of Object.entries(p)) {
                 product[key] = String(value || "");
@@ -147,12 +140,12 @@ export async function extractWithGPT(
             return product;
         });
     } catch (parseError) {
-        console.error("[GPT Vision] Failed to parse response:", parseError);
-        console.error("[GPT Vision] Raw response:", rawResponse);
-        throw new Error(`Failed to parse GPT response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`);
+        console.error("[OpenAI Vision] Failed to parse response:", parseError);
+        console.error("[OpenAI Vision] Raw response:", rawResponse);
+        throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`);
     }
 
-    console.log(`[GPT Vision] ✅ Extracted ${products.length} products`);
+    console.log(`[OpenAI Vision] ✅ Extracted ${products.length} products`);
 
     return { products, rawResponse, usage };
 }

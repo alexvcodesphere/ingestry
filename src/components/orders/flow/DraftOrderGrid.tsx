@@ -41,11 +41,13 @@ interface DraftOrderGridProps {
     onUpdateItem: (itemId: string, updates: Partial<NormalizedProduct>) => Promise<void>;
     onApproveItems: (itemIds: string[]) => Promise<void>;
     onApproveAll: () => Promise<void>;
-    onRegenerateSku?: (itemIds: string[]) => Promise<void>;
+    onRegenerateTemplates?: (itemIds: string[]) => Promise<void>;
     onBulkUpdate?: (itemIds: string[], updates: Partial<NormalizedProduct>) => Promise<void>;
     isSubmitting?: boolean;
     /** Field key to label mapping from processing profile */
     fieldLabels?: Record<string, string>;
+    /** Field keys that use templates (show regenerate button) */
+    templatedFields?: string[];
 }
 
 // Fields that should be treated as numbers
@@ -59,10 +61,11 @@ export function DraftOrderGrid({
     onUpdateItem,
     onApproveItems,
     onApproveAll,
-    onRegenerateSku,
+    onRegenerateTemplates,
     onBulkUpdate,
     isSubmitting = false,
     fieldLabels = {},
+    templatedFields = [],
 }: DraftOrderGridProps) {
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [updatingRows, setUpdatingRows] = useState<Set<string>>(new Set());
@@ -116,17 +119,17 @@ export function DraftOrderGrid({
         [onUpdateItem]
     );
 
-    const handleRegenerateSku = useCallback(async (itemIds: string[]) => {
-        if (!onRegenerateSku) return;
+    const handleRegenerateTemplates = useCallback(async (itemIds: string[]) => {
+        if (!onRegenerateTemplates) return;
         setIsRegenerating(true);
         setRegeneratingIds(new Set(itemIds));
         try {
-            await onRegenerateSku(itemIds);
+            await onRegenerateTemplates(itemIds);
         } finally {
             setIsRegenerating(false);
             setRegeneratingIds(new Set());
         }
-    }, [onRegenerateSku]);
+    }, [onRegenerateTemplates]);
 
     const handleBulkEdit = useCallback(async () => {
         if (!onBulkUpdate) return;
@@ -172,8 +175,8 @@ export function DraftOrderGrid({
                 const error = item.validation_errors?.find((e) => e.field === field.key);
                 const value = data?.[field.key] ?? "";
 
-                // Special handling for SKU with regenerate button
-                if (field.key === "sku" && onRegenerateSku) {
+                // Special handling for templated fields with regenerate button
+                if (templatedFields.includes(field.key) && onRegenerateTemplates) {
                     const isRegenThis = regeneratingIds.has(item.id);
                     return (
                         <div className="flex items-center gap-1">
@@ -189,9 +192,9 @@ export function DraftOrderGrid({
                                 variant="outline"
                                 size="sm"
                                 className="h-7 px-2 text-xs shrink-0"
-                                onClick={() => handleRegenerateSku([item.id])}
+                                onClick={() => handleRegenerateTemplates([item.id])}
                                 disabled={isRegenerating || isRegenThis}
-                                title="Regenerate SKU"
+                                title="Recalculate from template"
                             >
                                 {isRegenThis ? (
                                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -216,7 +219,7 @@ export function DraftOrderGrid({
             },
             size: field.key === "name" ? 200 : field.key === "sku" ? 180 : 100,
         }));
-    }, [editableColumns, handleCellUpdate, updatingRows, onRegenerateSku, handleRegenerateSku, isRegenerating, regeneratingIds]);
+    }, [editableColumns, handleCellUpdate, updatingRows, templatedFields, onRegenerateTemplates, handleRegenerateTemplates, isRegenerating, regeneratingIds]);
 
     // Combine static columns with dynamic data columns
     const columns = useMemo<ColumnDef<DraftLineItem>[]>(
@@ -317,20 +320,20 @@ export function DraftOrderGrid({
                                     Edit Selected ({selectedIds.length})
                                 </Button>
                             )}
-                            {onRegenerateSku && (
+                            {onRegenerateTemplates && templatedFields.length > 0 && (
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handleRegenerateSku(selectedIds)}
+                                    onClick={() => handleRegenerateTemplates(selectedIds)}
                                     disabled={isRegenerating}
                                 >
                                     {isRegenerating ? (
                                         <span className="flex items-center gap-1">
                                             <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                            Regenerating...
+                                            Recalculating...
                                         </span>
                                     ) : (
-                                        `Regenerate SKUs (${selectedIds.length})`
+                                        `Recalculate Templates (${selectedIds.length})`
                                     )}
                                 </Button>
                             )}

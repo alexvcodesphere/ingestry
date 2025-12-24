@@ -40,6 +40,7 @@ export default function NewOrderPage() {
     const [step, setStep] = useState<WizardStep>("upload");
     const [file, setFile] = useState<File | null>(null);
     const [shopSystem, setShopSystem] = useState<ShopSystem>("shopware");
+    const [orderName, setOrderName] = useState("");
     const [_isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState<string>("");
@@ -112,8 +113,11 @@ export default function NewOrderPage() {
             if (selectedProfileId) {
                 formData.append("profile_id", selectedProfileId);
             }
+            if (orderName.trim()) {
+                formData.append("order_name", orderName.trim());
+            }
 
-            setProgress("Processing with GPT Vision...");
+            setProgress("AI Processing...");
 
             const response = await fetch("/api/draft-orders", {
                 method: "POST",
@@ -143,7 +147,7 @@ export default function NewOrderPage() {
         <div className="max-w-2xl mx-auto space-y-6">
             {/* Header */}
             <div>
-                <h2 className="text-3xl font-bold tracking-tight">Create New Order</h2>
+                <h2 className="text-2xl font-bold tracking-tight">Create New Order</h2>
                 <p className="text-muted-foreground">
                     Upload an order confirmation to extract and process products
                 </p>
@@ -191,7 +195,7 @@ export default function NewOrderPage() {
                             Select a PDF or CSV file containing order confirmation data
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 pb-6">
                         <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center">
                             <Input
                                 type="file"
@@ -255,7 +259,21 @@ export default function NewOrderPage() {
                             Select the target shop system and processing options
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-6 pb-6">
+                        {/* Order Name */}
+                        <div className="space-y-2">
+                            <Label htmlFor="orderName">Order Name (optional)</Label>
+                            <Input
+                                id="orderName"
+                                value={orderName}
+                                onChange={(e) => setOrderName(e.target.value)}
+                                placeholder={file?.name.replace(/\.[^/.]+$/, "") || "e.g., Spring 2025 Order"}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Give this processing run a descriptive name for easy identification
+                            </p>
+                        </div>
+
                         {/* Processing Profile Selection */}
                         <div className="space-y-2">
                             <Label>Processing Profile</Label>
@@ -330,7 +348,7 @@ export default function NewOrderPage() {
                             Extracting products using GPT Vision...
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="py-12">
+                    <CardContent className="py-12 pb-12">
                         <div className="flex flex-col items-center gap-4">
                             <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                             <p className="text-muted-foreground">{progress}</p>

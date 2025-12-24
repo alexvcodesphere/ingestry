@@ -12,7 +12,7 @@ import {
     approveLineItems,
     approveAllLineItems,
 } from '@/lib/services/draft-order.service';
-import { generateSkuFromTemplate, type TemplateContext } from '@/lib/services/template-engine';
+import { evaluateTemplate, type TemplateContext } from '@/lib/services/template-engine';
 import type { NormalizedProduct } from '@/types';
 
 interface RouteParams {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         const body = await request.json();
         const { action, lineItemIds } = body as {
-            action: 'approve' | 'approve_all' | 'regenerate_sku';
+            action: 'approve' | 'approve_all' | 'regenerate_sku' | 'regenerate_templates';
             lineItemIds?: string[];
         };
 
@@ -156,8 +156,49 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             });
         }
 
-        // Handle SKU regeneration
-        if (action === 'regenerate_sku' && lineItemIds?.length) {
+        // Handle template field regeneration using latest profile
+        if ((action === 'regenerate_templates' || action === 'regenerate_sku') && lineItemIds?.length) {
+            // Fetch draft order to get the profile ID
+            const { data: draftOrder, error: orderError } = await supabase
+                .from('draft_orders')
+                .select('metadata')
+                .eq('id', orderId)
+                .single();
+            
+            if (orderError) {
+                return NextResponse.json(
+                    { success: false, error: 'Failed to fetch order' },
+                    { status: 500 }
+                );
+            }
+
+            // Get the processing profile - prefer order's profile, fallback to default
+            const profileId = draftOrder?.metadata?.profile_id;
+            const { data: profile, error: profileError } = await supabase
+                .from('input_profiles')
+                .select('*')
+                .eq(profileId ? 'id' : 'is_default', profileId || true)
+                .single();
+
+            if (profileError || !profile) {
+                return NextResponse.json(
+                    { success: false, error: 'No processing profile found' },
+                    { status: 400 }
+                );
+            }
+
+            // Get templated fields from profile
+            const templatedFields = (profile.fields || []).filter(
+                (f: { use_template?: boolean; template?: string }) => f.use_template && f.template
+            );
+
+            if (templatedFields.length === 0) {
+                return NextResponse.json(
+                    { success: false, error: 'No templated fields in profile' },
+                    { status: 400 }
+                );
+            }
+
             // Fetch the line items
             const { data: items, error: fetchError } = await supabase
                 .from('draft_line_items')
@@ -171,12 +212,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 );
             }
 
+            // Build lookup type mapping from profile
+            const lookupTypeMapping: Record<string, string> = {};
+            for (const field of profile.fields || []) {
+                if (field.normalize_with) {
+                    lookupTypeMapping[field.key] = field.normalize_with;
+                }
+            }
+
             let regeneratedCount = 0;
             for (const item of items) {
                 const data = item.normalized_data as NormalizedProduct;
                 if (!data) continue;
 
-                // Build template context - pass all product data dynamically
+                // Build template context from all product data
                 const productValues: Record<string, string> = {};
                 for (const [key, value] of Object.entries(data)) {
                     if (typeof value === 'string') {
@@ -189,19 +238,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 const context: TemplateContext = {
                     values: productValues,
                     sequence: item.line_number || 1,
+                    lookupTypeMapping,
                 };
 
-                // Generate new SKU
-                const newSku = await generateSkuFromTemplate(context);
+                // Recalculate all templated fields
+                const updates: Record<string, string> = {};
+                for (const field of templatedFields) {
+                    try {
+                        const newValue = await evaluateTemplate(field.template, context);
+                        updates[field.key] = newValue;
+                    } catch (err) {
+                        console.error(`[Regenerate] Failed to evaluate ${field.key}:`, err);
+                    }
+                }
 
-                // Update the line item
-                const updated = await updateLineItem(item.id, { sku: newSku });
-                if (updated) regeneratedCount++;
+                // Update the line item with new templated values
+                if (Object.keys(updates).length > 0) {
+                    const updated = await updateLineItem(item.id, updates);
+                    if (updated) regeneratedCount++;
+                }
             }
 
             return NextResponse.json({
                 success: true,
-                data: { regeneratedCount },
+                data: { regeneratedCount, fieldsUpdated: templatedFields.map((f: { key: string }) => f.key) },
             });
         }
 

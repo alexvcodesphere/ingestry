@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TemplateInput } from "@/components/ui/template-input";
 import {
     Dialog,
     DialogContent,
@@ -34,6 +35,7 @@ interface FieldConfig {
     normalize_with?: string; // lookup field_key for normalization
     use_template?: boolean;  // if true, value is computed from template
     template?: string;       // template string e.g. "{brand} - {name}"
+    fallback?: string;       // default value if extraction returns empty
 }
 
 interface ProcessingProfile {
@@ -148,6 +150,14 @@ export default function ProcessingProfilesPage() {
         ));
     };
 
+    const updateFieldFallback = (key: string, fallback: string) => {
+        setFormFields(formFields.map(f =>
+            f.key === key
+                ? { ...f, fallback: fallback || undefined }
+                : f
+        ));
+    };
+
     const addField = () => {
         if (!newFieldKey.trim() || !newFieldLabel.trim()) return;
         const key = newFieldKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -248,62 +258,75 @@ export default function ProcessingProfilesPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold">Processing Profiles</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Configure what fields to extract, how to normalize them, and SKU generation
-                    </p>
+                    <h2 className="text-2xl font-bold tracking-tight">Input Profiles</h2>
+                    <p className="text-sm text-muted-foreground">Configure extraction fields and normalization</p>
                 </div>
-                <Button onClick={() => openEditor()}>+ New Profile</Button>
+                <Button onClick={() => openEditor()} size="sm">+ New Profile</Button>
             </div>
 
-            {profiles.length === 0 ? (
-                <Card>
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        No profiles configured yet. Create one to get started.
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="grid gap-3">
-                    {profiles.map((profile) => (
-                        <Card key={profile.id} className={`gap-0 py-4 ${profile.is_default ? "border-primary" : ""}`}>
-                            <CardContent className="py-0">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            {profile.is_default && <span className="text-yellow-500">⭐</span>}
-                                            <span className="font-semibold">{profile.name}</span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mt-1">
-                                            {profile.fields.map(f => f.label).join(", ")}
-                                        </p>
+            {/* Profiles List */}
+            <div className="space-y-3">
+                {profiles.length === 0 && (
+                    <Card>
+                        <CardContent className="p-8 text-center text-muted-foreground">
+                            No profiles configured yet. Create one to get started.
+                        </CardContent>
+                    </Card>
+                )}
+                {profiles.map((profile) => (
+                    <Card key={profile.id}>
+                        <CardContent className="p-4">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <h4 className="font-medium">{profile.name}</h4>
+                                        {profile.is_default && (
+                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                                Default
+                                            </span>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDuplicate(profile)}
-                                            title="Duplicate"
-                                        >
-                                            Duplicate
-                                        </Button>
-                                        <Button variant="outline" size="sm" onClick={() => openEditor(profile)}>
-                                            Edit
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => handleDelete(profile.id)}
-                                            className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                    <div className="flex flex-wrap gap-1">
+                                        {profile.fields.slice(0, 6).map((field) => (
+                                            <span
+                                                key={field.key}
+                                                className="text-xs bg-muted px-2 py-0.5 rounded font-mono"
+                                            >
+                                                {field.label}
+                                            </span>
+                                        ))}
+                                        {profile.fields.length > 6 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                +{profile.fields.length - 6} more
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            )}
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDuplicate(profile)}
+                                    >
+                                        Duplicate
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => openEditor(profile)}>
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleDelete(profile.id)}
+                                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
 
             {/* Profile Editor Dialog */}
             <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
@@ -402,15 +425,26 @@ export default function ProcessingProfilesPage() {
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
-                                            {field.use_template && (
-                                                <Input
-                                                    value={field.template || ''}
-                                                    onChange={(e) => updateFieldTemplate(field.key, e.target.value)}
-                                                    placeholder="e.g., {brand} - {name} ({color})"
-                                                    className="text-sm"
-                                                />
-                                            )}
-                                        </div>
+                                                            {field.use_template && (
+                                                                <TemplateInput
+                                                                    value={field.template || ''}
+                                                                    onChange={(value) => updateFieldTemplate(field.key, value)}
+                                                                    fields={formFields}
+                                                                    placeholder="e.g., {brand} - {name} ({color})"
+                                                                />
+                                                            )}
+                                                            {!field.use_template && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs text-muted-foreground whitespace-nowrap">Fallback:</span>
+                                                                    <Input
+                                                                        value={field.fallback || ''}
+                                                                        onChange={(e) => updateFieldFallback(field.key, e.target.value)}
+                                                                        placeholder="Default if empty"
+                                                                        className="text-sm h-8 w-32"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
                                     ))}
                                 </div>
                             ) : (

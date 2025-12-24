@@ -133,13 +133,13 @@ export default function OrderDetailPage() {
         }
     };
 
-    // Handle SKU regeneration
-    const handleRegenerateSku = async (itemIds: string[]) => {
+    // Handle template field regeneration
+    const handleRegenerateTemplates = async (itemIds: string[]) => {
         try {
             const response = await fetch(`/api/draft-orders/${orderId}/line-items`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "regenerate_sku", lineItemIds: itemIds }),
+                body: JSON.stringify({ action: "regenerate_templates", lineItemIds: itemIds }),
             });
 
             const result = await response.json();
@@ -147,7 +147,7 @@ export default function OrderDetailPage() {
                 await fetchOrder();
             }
         } catch (err) {
-            console.error("Failed to regenerate SKUs:", err);
+            console.error("Failed to regenerate templates:", err);
         }
     };
 
@@ -286,26 +286,27 @@ export default function OrderDetailPage() {
 
             {/* Validation Grid */}
             <Card>
-                <CardHeader>
-                    <CardTitle>Product Validation</CardTitle>
-                    <CardDescription>
-                        Review and edit extracted products. Click on cells to edit values.
-                        Approve items when they are correct.
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between border-b">
+                    <CardTitle className="text-base font-medium">Product Validation</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-6">
                     {order.line_items && order.line_items.length > 0 ? (
                         <DraftOrderGrid
                             lineItems={order.line_items}
                             onUpdateItem={handleUpdateItem}
                             onApproveItems={handleApproveItems}
                             onApproveAll={handleApproveAll}
-                            onRegenerateSku={handleRegenerateSku}
+                            onRegenerateTemplates={handleRegenerateTemplates}
                             onBulkUpdate={handleBulkUpdate}
                             isSubmitting={isSubmitting}
                             fieldLabels={
                                 ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
                                     .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
+                            }
+                            templatedFields={
+                                ((order.metadata as { profile_fields?: Array<{ key: string; use_template?: boolean }> })?.profile_fields || [])
+                                    .filter(f => f.use_template)
+                                    .map(f => f.key)
                             }
                         />
                     ) : (
@@ -318,10 +319,10 @@ export default function OrderDetailPage() {
 
             {/* Order Metadata */}
             <Card>
-                <CardHeader>
-                    <CardTitle>Order Details</CardTitle>
+                <CardHeader className="border-b">
+                    <CardTitle className="text-base font-medium">Order Details</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-6">
                     <dl className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                             <dt className="text-muted-foreground">Order ID</dt>

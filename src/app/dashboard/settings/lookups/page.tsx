@@ -42,12 +42,22 @@ interface FieldKeyInfo {
     count: number;
 }
 
+// Column definition for custom columns
+interface ColumnDef {
+    id: string;
+    column_key: string;
+    column_label: string;
+    column_type: 'text' | 'number' | 'boolean';
+    is_default: boolean;
+}
+
 // Combined type for display
 type LookupItem = {
     id: string;
     name: string;
     code: string;
     aliases?: string[];
+    extra_data?: Record<string, unknown>;
     created_at?: string;
 };
 
@@ -59,13 +69,24 @@ export default function CodeLookupsPage() {
     const [isTypesLoading, setIsTypesLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingLookup, setEditingLookup] = useState<LookupItem | null>(null);
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        name: string;
+        code: string;
+        aliases: string;
+        extra_data: Record<string, string>;
+    }>({
         name: "",
         code: "",
         aliases: "",
+        extra_data: {},
     });
     const [searchQuery, setSearchQuery] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    
+    // Custom columns state
+    const [columnDefs, setColumnDefs] = useState<ColumnDef[]>([]);
+    const [isColumnDialogOpen, setIsColumnDialogOpen] = useState(false);
+    const [newColumnData, setNewColumnData] = useState({ label: "", key: "" });
 
     // Type management state
     const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
@@ -146,20 +167,34 @@ export default function CodeLookupsPage() {
                 name: l.name,
                 code: l.code,
                 aliases: l.aliases,
+                extra_data: l.extra_data || {},
             })));
         }
         setIsLoading(false);
     }, []);
 
+    // Fetch column definitions for a field_key
+    const fetchColumnDefs = useCallback(async (fieldKey: string) => {
+        if (!fieldKey) return;
+        const supabase = createClient();
+        const { data } = await supabase
+            .from("lookup_column_defs")
+            .select("*")
+            .eq("field_key", fieldKey)
+            .order("sort_order");
+        if (data) setColumnDefs(data);
+    }, []);
+
     useEffect(() => {
         if (activeType) {
             fetchLookups(activeType);
+            fetchColumnDefs(activeType);
             setSearchQuery("");
             // Reset test when switching types
             setTestInput("");
             setTestResult(null);
         }
-    }, [activeType, fetchLookups]);
+    }, [activeType, fetchLookups, fetchColumnDefs]);
 
     // Test normalization
     const handleTestNormalization = async () => {
@@ -184,14 +219,21 @@ export default function CodeLookupsPage() {
     const handleOpenDialog = (lookup?: LookupItem) => {
         if (lookup) {
             setEditingLookup(lookup);
+            const extraDataStrings: Record<string, string> = {};
+            if (lookup.extra_data) {
+                Object.entries(lookup.extra_data).forEach(([k, v]) => {
+                    extraDataStrings[k] = String(v ?? "");
+                });
+            }
             setFormData({
                 name: lookup.name,
                 code: lookup.code,
                 aliases: lookup.aliases?.join(", ") || "",
+                extra_data: extraDataStrings,
             });
         } else {
             setEditingLookup(null);
-            setFormData({ name: "", code: "", aliases: "" });
+            setFormData({ name: "", code: "", aliases: "", extra_data: {} });
         }
         setIsDialogOpen(true);
     };
@@ -216,6 +258,7 @@ export default function CodeLookupsPage() {
                         name: formData.name,
                         code: formData.code.toUpperCase(),
                         aliases: aliasArray,
+                        extra_data: formData.extra_data,
                     })
                     .eq("id", editingLookup.id);
                 if (error) throw error;
@@ -228,6 +271,7 @@ export default function CodeLookupsPage() {
                         name: formData.name,
                         code: formData.code.toUpperCase(),
                         aliases: aliasArray,
+                        extra_data: formData.extra_data,
                     });
                 if (error) throw error;
             }
@@ -344,10 +388,8 @@ export default function CodeLookupsPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold">Code Lookups</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Normalize extracted values and generate SKU codes. Add entries with aliases to handle variations.
-                    </p>
+                    <h2 className="text-2xl font-bold tracking-tight">Code Lookups</h2>
+                    <p className="text-sm text-muted-foreground">Normalize values and generate SKU codes</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {activeConfig && (
@@ -457,9 +499,14 @@ export default function CodeLookupsPage() {
                                     </span>
                                 )}
                             </div>
-                            <Button onClick={() => handleOpenDialog()}>
-                                Add {field.field_key}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setIsColumnDialogOpen(true)}>
+                                    + Column
+                                </Button>
+                                <Button onClick={() => handleOpenDialog()}>
+                                    Add {field.field_key}
+                                </Button>
+                            </div>
                         </div>
 
                         <Card>
@@ -479,6 +526,12 @@ export default function CodeLookupsPage() {
                                                 <TableHead>Name</TableHead>
                                                 <TableHead>Code</TableHead>
                                                 <TableHead>Aliases</TableHead>
+                                                {columnDefs.map(col => (
+                                                    <TableHead key={col.id}>
+                                                        {col.column_label}
+                                                        {col.is_default && <span className="ml-1 text-xs text-muted-foreground">(default)</span>}
+                                                    </TableHead>
+                                                ))}
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -496,6 +549,11 @@ export default function CodeLookupsPage() {
                                                     <TableCell className="text-muted-foreground text-sm">
                                                         {lookup.aliases?.join(", ") || "-"}
                                                     </TableCell>
+                                                    {columnDefs.map(col => (
+                                                        <TableCell key={col.id} className="text-sm">
+                                                            {String(lookup.extra_data?.[col.column_key] ?? "-")}
+                                                        </TableCell>
+                                                    ))}
                                                     <TableCell className="text-right">
                                                         <div className="flex items-center justify-end gap-1">
                                                             <Button
@@ -580,6 +638,30 @@ export default function CodeLookupsPage() {
                                 Variations that should normalize to this entry (synonyms, typos, other languages). Fuzzy matching also handles minor typos automatically.
                             </p>
                         </div>
+
+                        {/* Custom columns */}
+                        {columnDefs.length > 0 && (
+                            <div className="border-t pt-4 space-y-3">
+                                <Label className="text-sm font-medium">Additional Columns</Label>
+                                {columnDefs.map(col => (
+                                    <div key={col.id} className="space-y-1">
+                                        <Label htmlFor={col.column_key} className="text-sm text-muted-foreground">
+                                            {col.column_label}
+                                            {col.is_default && <span className="ml-1 text-xs">(default)</span>}
+                                        </Label>
+                                        <Input
+                                            id={col.column_key}
+                                            value={formData.extra_data[col.column_key] || ""}
+                                            onChange={(e) => setFormData({
+                                                ...formData,
+                                                extra_data: { ...formData.extra_data, [col.column_key]: e.target.value }
+                                            })}
+                                            placeholder={`Enter ${col.column_label.toLowerCase()}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end gap-2">
@@ -655,6 +737,76 @@ export default function CodeLookupsPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Add Column Dialog */}
+            <Dialog open={isColumnDialogOpen} onOpenChange={setIsColumnDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add Column to {activeType}</DialogTitle>
+                        <DialogDescription>
+                            Add a custom column to store additional data for each lookup entry
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="col_label">Column Label</Label>
+                            <Input
+                                id="col_label"
+                                value={newColumnData.label}
+                                onChange={(e) => setNewColumnData({
+                                    ...newColumnData,
+                                    label: e.target.value,
+                                    key: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_')
+                                })}
+                                placeholder="e.g., Xentral Code"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="col_key">Column Key</Label>
+                            <Input
+                                id="col_key"
+                                value={newColumnData.key}
+                                onChange={(e) => setNewColumnData({ ...newColumnData, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+                                placeholder="e.g., xentral_code"
+                                className="font-mono"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Used to access the value in exports and templates
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setIsColumnDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                if (!newColumnData.label || !newColumnData.key) return;
+                                const supabase = createClient();
+                                const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+                                await supabase.from("lookup_column_defs").insert({
+                                    tenant_id: tenantId,
+                                    field_key: activeType,
+                                    column_key: newColumnData.key,
+                                    column_label: newColumnData.label,
+                                    column_type: 'text',
+                                    is_default: false,
+                                });
+                                setIsColumnDialogOpen(false);
+                                setNewColumnData({ label: "", key: "" });
+                                fetchColumnDefs(activeType);
+                            }}
+                            disabled={!newColumnData.label || !newColumnData.key}
+                        >
+                            Add Column
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
+
