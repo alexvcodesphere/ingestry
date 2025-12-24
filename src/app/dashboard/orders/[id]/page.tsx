@@ -10,7 +10,9 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DraftOrderGrid } from "@/components/orders/flow/DraftOrderGrid";
-import type { DraftOrder, NormalizedProduct, DraftOrderStatus } from "@/types";
+import { ExportDialog } from "@/components/orders/ExportDialog";
+import type { DraftOrder, NormalizedProduct, DraftOrderStatus, DraftLineItem } from "@/types";
+import type { DataRecord } from "@/lib/export";
 
 const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
     processing: {
@@ -49,6 +51,7 @@ export default function OrderDetailPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
     // Fetch order data
     const fetchOrder = useCallback(async () => {
@@ -251,6 +254,13 @@ export default function OrderDetailPage() {
                     >
                         Back
                     </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsExportDialogOpen(true)}
+                        disabled={!order.line_items || order.line_items.length === 0}
+                    >
+                        Export
+                    </Button>
                     {!isExported && (
                         <Button
                             onClick={handleSubmitToShop}
@@ -338,6 +348,17 @@ export default function OrderDetailPage() {
                     </dl>
                 </CardContent>
             </Card>
+            {/* Export Dialog */}
+            <ExportDialog
+                open={isExportDialogOpen}
+                onOpenChange={setIsExportDialogOpen}
+                orderId={orderId}
+                records={
+                    (order.line_items || [])
+                        .filter((item: DraftLineItem) => item.normalized_data)
+                        .map((item: DraftLineItem) => item.normalized_data as DataRecord)
+                }
+            />
         </div>
     );
 }

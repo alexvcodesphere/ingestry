@@ -70,6 +70,7 @@ export type LineItemStatus =
 
 export interface DraftOrder {
     id: string;
+    name?: string;
     status: DraftOrderStatus;
     shop_system: ShopSystem;
     template_id?: string;

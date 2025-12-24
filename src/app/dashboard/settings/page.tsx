@@ -12,10 +12,16 @@ import { Button } from "@/components/ui/button";
 
 const configSections = [
     {
-        title: "Processing Profiles",
+        title: "Input Profiles",
         description: "Configure extraction fields, normalization, and SKU generation",
         href: "/dashboard/settings/processing",
         icon: "⚙️",
+    },
+    {
+        title: "Output Profiles",
+        description: "Configure field mappings and formats for export",
+        href: "/dashboard/settings/output",
+        icon: "📤",
     },
     {
         title: "Code Lookups",

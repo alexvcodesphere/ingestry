@@ -53,7 +53,7 @@ export default function NewOrderPage() {
         const fetchProfiles = async () => {
             const supabase = createClient();
             const { data } = await supabase
-                .from("processing_profiles")
+                .from("input_profiles")
                 .select("id, name, is_default")
                 .order("is_default", { ascending: false });
 

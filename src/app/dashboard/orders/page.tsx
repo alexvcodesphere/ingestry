@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     Table,
     TableBody,
@@ -17,7 +18,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Trash2 } from "lucide-react";
+import { Trash2, Pencil } from "lucide-react";
 import type { DraftOrder, DraftOrderStatus } from "@/types";
 
 const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
@@ -51,6 +52,8 @@ export default function OrdersPage() {
     const [orders, setOrders] = useState<DraftOrder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<DraftOrderStatus | "all">("all");
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState("");
 
     const fetchOrders = useCallback(async () => {
         setIsLoading(true);
@@ -95,6 +98,42 @@ export default function OrdersPage() {
         }
     };
 
+    const handleStartRename = (order: DraftOrder) => {
+        setEditingId(order.id);
+        setEditingName(order.name || order.source_file_name || `Order ${order.id.slice(0, 8)}`);
+    };
+
+    const handleSaveRename = async (orderId: string) => {
+        if (!editingName.trim()) {
+            setEditingId(null);
+            return;
+        }
+        try {
+            const response = await fetch(`/api/draft-orders/${orderId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: editingName.trim() }),
+            });
+            if (response.ok) {
+                // Update local state immediately
+                setOrders(orders.map(o => 
+                    o.id === orderId ? { ...o, name: editingName.trim() } : o
+                ));
+            }
+        } catch (error) {
+            console.error("Rename error:", error);
+        }
+        setEditingId(null);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent, orderId: string) => {
+        if (e.key === "Enter") {
+            handleSaveRename(orderId);
+        } else if (e.key === "Escape") {
+            setEditingId(null);
+        }
+    };
+
     const getStatusBadge = (status: DraftOrderStatus) => {
         const config = statusConfig[status] || statusConfig.processing;
         return (
@@ -117,6 +156,10 @@ export default function OrdersPage() {
                 {systemLabels[system] || system}
             </span>
         );
+    };
+
+    const getOrderDisplayName = (order: DraftOrder) => {
+        return order.name || order.source_file_name || `Order ${order.id.slice(0, 8)}`;
     };
 
     if (isLoading) {
@@ -197,7 +240,7 @@ export default function OrdersPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Order ID</TableHead>
+                                    <TableHead>Name</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Shop System</TableHead>
                                     <TableHead>Created</TableHead>
@@ -207,8 +250,31 @@ export default function OrdersPage() {
                             <TableBody>
                                 {orders.map((order) => (
                                     <TableRow key={order.id}>
-                                        <TableCell className="font-mono text-sm">
-                                            {order.id.slice(0, 8)}...
+                                        <TableCell>
+                                            {editingId === order.id ? (
+                                                <Input
+                                                    value={editingName}
+                                                    onChange={(e) => setEditingName(e.target.value)}
+                                                    onBlur={() => handleSaveRename(order.id)}
+                                                    onKeyDown={(e) => handleKeyDown(e, order.id)}
+                                                    autoFocus
+                                                    className="h-8 w-48"
+                                                />
+                                            ) : (
+                                                <div className="flex items-center gap-2 group">
+                                                    <span className="font-medium">
+                                                        {getOrderDisplayName(order)}
+                                                    </span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleStartRename(order)}
+                                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <Pencil className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {getStatusBadge(order.status)}
@@ -246,3 +312,4 @@ export default function OrdersPage() {
         </div>
     );
 }
+

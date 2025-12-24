@@ -36,7 +36,7 @@ export async function getProcessingProfile(profileId?: string): Promise<Processi
 
     if (profileId) {
         const { data, error } = await supabase
-            .from('processing_profiles')
+            .from('input_profiles')
             .select('*')
             .eq('id', profileId)
             .single();
@@ -50,7 +50,7 @@ export async function getProcessingProfile(profileId?: string): Promise<Processi
 
     // Get default profile
     const { data, error } = await supabase
-        .from('processing_profiles')
+        .from('input_profiles')
         .select('*')
         .eq('is_default', true)
         .single();
@@ -58,7 +58,7 @@ export async function getProcessingProfile(profileId?: string): Promise<Processi
     if (error || !data) {
         // Fallback: get any profile
         const { data: anyProfile } = await supabase
-            .from('processing_profiles')
+            .from('input_profiles')
             .select('*')
             .limit(1)
             .single();

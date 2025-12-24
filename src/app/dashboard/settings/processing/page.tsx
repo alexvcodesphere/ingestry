@@ -76,7 +76,7 @@ export default function ProcessingProfilesPage() {
         const supabase = createClient();
 
         const { data, error } = await supabase
-            .from("processing_profiles")
+            .from("input_profiles")
             .select("*")
             .order("is_default", { ascending: false })
             .order("name");
@@ -187,13 +187,13 @@ export default function ProcessingProfilesPage() {
 
             if (editingProfile) {
                 const { error } = await supabase
-                    .from("processing_profiles")
+                    .from("input_profiles")
                     .update(profileData)
                     .eq("id", editingProfile.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
-                    .from("processing_profiles")
+                    .from("input_profiles")
                     .insert({ ...profileData, tenant_id: finalTenantId });
                 if (error) throw error;
             }
@@ -201,7 +201,7 @@ export default function ProcessingProfilesPage() {
             // If setting as default, unset others
             if (formIsDefault && finalTenantId) {
                 await supabase
-                    .from("processing_profiles")
+                    .from("input_profiles")
                     .update({ is_default: false })
                     .eq("tenant_id", finalTenantId)
                     .neq("name", formName);
@@ -221,8 +221,19 @@ export default function ProcessingProfilesPage() {
         if (!confirm("Delete this profile?")) return;
 
         const supabase = createClient();
-        await supabase.from("processing_profiles").delete().eq("id", id);
+        await supabase.from("input_profiles").delete().eq("id", id);
         await fetchProfiles();
+    };
+
+    const handleDuplicate = (profile: ProcessingProfile) => {
+        setEditingProfile(null);
+        setFormName(`${profile.name} (Copy)`);
+        setFormDescription(profile.description || "");
+        setFormFields(Array.isArray(profile.fields) ? [...profile.fields] : []);
+        setFormIsDefault(false);
+        setNewFieldKey("");
+        setNewFieldLabel("");
+        setIsEditorOpen(true);
     };
 
     if (isLoading) {
@@ -267,6 +278,14 @@ export default function ProcessingProfilesPage() {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleDuplicate(profile)}
+                                            title="Duplicate"
+                                        >
+                                            Duplicate
+                                        </Button>
                                         <Button variant="outline" size="sm" onClick={() => openEditor(profile)}>
                                             Edit
                                         </Button>

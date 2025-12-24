@@ -67,7 +67,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 /**
  * PATCH /api/draft-orders/[id]
- * Update a draft order's status
+ * Update a draft order's status or name
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
     try {
@@ -98,16 +98,35 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }
 
         const body = await request.json();
-        const { status } = body as { status?: DraftOrderStatus };
+        const { status, name } = body as { status?: DraftOrderStatus; name?: string };
 
-        if (!status) {
+        // Build update object
+        const updates: Record<string, unknown> = {};
+        if (status !== undefined) updates.status = status;
+        if (name !== undefined) updates.name = name;
+
+        if (Object.keys(updates).length === 0) {
             return NextResponse.json(
-                { success: false, error: 'Status is required' },
+                { success: false, error: 'No valid fields to update' },
                 { status: 400 }
             );
         }
 
-        const updated = await updateDraftOrderStatus(id, status);
+        // Update order directly if name is provided, or use service for status
+        if (status && !name) {
+            const updated = await updateDraftOrderStatus(id, status);
+            return NextResponse.json({ success: true, data: updated });
+        }
+
+        // Direct update for name (and optionally status)
+        const { data: updated, error } = await supabase
+            .from('draft_orders')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
 
         return NextResponse.json({
             success: true,
