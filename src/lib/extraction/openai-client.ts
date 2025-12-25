@@ -3,7 +3,7 @@
  * Uses OpenAI Responses API with direct PDF input for vision-based extraction
  */
 
-import type { ExtractionResult, ExtractedProduct } from './types';
+import type { ExtractionResult, ExtractedProductWithMeta, NeedsCheckingFlag } from './types';
 
 const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 
@@ -108,7 +108,7 @@ export async function extractWithOpenAI(
     console.log(`[OpenAI Vision] Response preview: ${rawResponse.substring(0, 200)}...`);
 
     // Parse the JSON response
-    let products: ExtractedProduct[] = [];
+    let products: ExtractedProductWithMeta[] = [];
     try {
         // Clean the response (remove any markdown if present)
         let cleanedResponse = rawResponse.trim();
@@ -132,12 +132,20 @@ export async function extractWithOpenAI(
                 : [];
 
         products = productArray.map((p: Record<string, unknown>) => {
-            // Pass through all fields from response dynamically
-            const product: Record<string, string> = {};
+            // Extract needs_checking array if present
+            const needsChecking = Array.isArray(p.needs_checking) 
+                ? (p.needs_checking as NeedsCheckingFlag[])
+                : undefined;
+
+            // Build data object from all other fields
+            const data: Record<string, string> = {};
             for (const [key, value] of Object.entries(p)) {
-                product[key] = String(value || "");
+                if (key !== 'needs_checking') {
+                    data[key] = String(value || "");
+                }
             }
-            return product;
+
+            return { data, needs_checking: needsChecking };
         });
     } catch (parseError) {
         console.error("[OpenAI Vision] Failed to parse response:", parseError);

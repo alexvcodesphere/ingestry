@@ -71,18 +71,25 @@ export async function getProcessingProfile(profileId?: string): Promise<Processi
 }
 
 /**
+ * Options for prompt building
+ */
+export interface PromptOptions {
+    enableReasoning?: boolean;
+}
+
+/**
  * Build the system prompt from profile fields
  */
-export function buildSystemPrompt(fields: FieldConfig[]): string {
+export function buildSystemPrompt(fields: FieldConfig[], options?: PromptOptions): string {
     const fieldDescriptions = fields.map(f => {
         let desc = `- ${f.key}: ${f.label}`;
         if (f.required) desc += ' [REQUIRED]';
         return desc;
     }).join('\n');
 
-    const jsonSchema = buildJsonSchema(fields);
+    const jsonSchema = buildJsonSchema(fields, options?.enableReasoning);
 
-    return `You are a product data extraction assistant. Extract product information from the provided document (PDF or image).
+    let prompt = `You are a product data extraction assistant. Extract product information from the provided document (PDF or image).
 
 ## Fields to Extract
 ${fieldDescriptions}
@@ -97,17 +104,52 @@ ${JSON.stringify(jsonSchema, null, 2)}
 3. For prices, include the currency symbol if visible
 4. For quantities, extract the numeric value
 5. Be precise - extract exactly what is shown, don't infer or guess
-6. Return valid JSON only`;
+6. Return valid JSON only
+
+## CRITICAL: One Product Entry Per Unique Variant
+The goal is automated ingestion into ERP/shop systems where each entry represents a unique purchasable item (SKU).
+- If a product row contains multiple variants (sizes, colors, materials, etc.), split them into SEPARATE product entries
+- Each entry should have a SINGLE value for each field (not comma-separated lists)
+- Each entry should have its OWN quantity
+- Interpret size grids, variant tables, or grouped data as individual items
+- Example: A row showing "Jacket" with quantities for S, M, L becomes THREE entries, not one with quantity summed`;
+
+    // Add reasoning instructions when enabled
+    if (options?.enableReasoning) {
+        prompt += `
+
+## Uncertainty Flags
+If you are NOT 100% confident about any extracted value, include a "needs_checking" array for that product.
+Flag fields when:
+- Text is partially obscured or low-resolution
+- Multiple values exist and choice is ambiguous
+- Value was inferred rather than directly stated
+- Data required significant interpretation
+
+Example:
+{
+  "products": [{
+    "name": "...",
+    "needs_checking": [{ "field": "price", "reason": "Multiple prices shown" }]
+  }]
+}`;
+    }
+
+    return prompt;
 }
 
 /**
  * Build JSON schema example from field definitions
  */
-function buildJsonSchema(fields: FieldConfig[]): object {
-    const example: Record<string, string> = {};
+function buildJsonSchema(fields: FieldConfig[], includeNeedsChecking?: boolean): object {
+    const example: Record<string, unknown> = {};
 
     for (const field of fields) {
         example[field.key] = '';
+    }
+
+    if (includeNeedsChecking) {
+        example.needs_checking = [{ field: '', reason: '' }];
     }
 
     return {
@@ -118,15 +160,18 @@ function buildJsonSchema(fields: FieldConfig[]): object {
 /**
  * Get the prompt for a profile (fetches from DB if needed)
  */
-export async function getPromptForProfile(profileId?: string): Promise<{ prompt: string; profile: ProcessingProfile | null }> {
+export async function getPromptForProfile(
+    profileId?: string,
+    options?: PromptOptions
+): Promise<{ prompt: string; profile: ProcessingProfile | null }> {
     const profile = await getProcessingProfile(profileId);
 
     if (!profile || !profile.fields || profile.fields.length === 0) {
         // Fallback to hardcoded default
-        return { prompt: getDefaultPrompt(), profile: null };
+        return { prompt: getDefaultPrompt(options), profile: null };
     }
 
-    return { prompt: buildSystemPrompt(profile.fields), profile };
+    return { prompt: buildSystemPrompt(profile.fields, options), profile };
 }
 
 /**
@@ -135,8 +180,8 @@ export async function getPromptForProfile(profileId?: string): Promise<{ prompt:
  * FALLBACK BEHAVIOR: Only used when no processing profile exists in the database.
  * New tenants should create a processing profile to customize extraction fields.
  */
-function getDefaultPrompt(): string {
-    return `You are a product data extraction assistant specializing in fashion order confirmations.
+function getDefaultPrompt(options?: PromptOptions): string {
+    let prompt = `You are a product data extraction assistant specializing in fashion order confirmations.
 
 Extract ALL products from the provided document. For each product, capture:
 - name: Full product name as shown
@@ -163,6 +208,13 @@ Important:
 - Use empty string "" for missing fields
 - Include currency symbols with prices
 - Be precise, don't infer`;
+
+    if (options?.enableReasoning) {
+        prompt += `
+- If not 100% confident about a value, include a "needs_checking" array with { "field": "...", "reason": "..." }`;
+    }
+
+    return prompt;
 }
 
 // Re-export the FieldConfig type for other modules

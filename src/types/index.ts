@@ -92,6 +92,7 @@ export interface DraftLineItem {
     raw_data: RawExtractedProduct;
     normalized_data?: NormalizedProduct;
     validation_errors: ValidationError[];
+    needs_checking?: Array<{ field: string; reason: string }>;
     user_modified: boolean;
     created_at: string;
     updated_at: string;

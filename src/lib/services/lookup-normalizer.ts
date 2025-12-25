@@ -77,6 +77,89 @@ function getFuzzyThreshold(length: number): number {
     return 3;
 }
 
+// ============ LOOKUP CACHE FOR PERFORMANCE ============
+
+interface LookupEntry {
+    name: string;
+    code: string;
+    aliases?: string[];
+    extra_data?: Record<string, unknown>;
+}
+
+/** In-memory cache of lookups, keyed by lookup type (field_key) */
+let lookupCache: Map<string, LookupEntry[]> = new Map();
+
+/**
+ * Prefetch all lookups for a set of lookup types in ONE database query.
+ * Call this before processing to avoid N+1 query problems.
+ */
+export async function prefetchLookups(lookupTypes: string[]): Promise<void> {
+    if (lookupTypes.length === 0) return;
+    
+    const supabase = await createClient();
+    
+    // Fetch all lookups for all types in one query
+    const { data: lookups } = await supabase
+        .from('code_lookups')
+        .select('field_key, name, code, aliases, extra_data')
+        .in('field_key', lookupTypes);
+    
+    if (!lookups) return;
+    
+    // Group by field_key and cache
+    lookupCache = new Map();
+    for (const lookup of lookups) {
+        const existing = lookupCache.get(lookup.field_key) || [];
+        existing.push({
+            name: lookup.name,
+            code: lookup.code,
+            aliases: lookup.aliases,
+            extra_data: lookup.extra_data,
+        });
+        lookupCache.set(lookup.field_key, existing);
+    }
+    
+    console.log(`[LookupNormalizer] Prefetched ${lookups.length} lookups for ${lookupTypes.length} types`);
+}
+
+/**
+ * Clear the lookup cache (call after processing is complete)
+ */
+export function clearLookupCache(): void {
+    lookupCache.clear();
+}
+
+/**
+ * Get lookups for a type, using cache if available, otherwise fetch
+ */
+async function getLookupsForType(lookupType: string): Promise<LookupEntry[]> {
+    // Check cache first
+    if (lookupCache.has(lookupType)) {
+        return lookupCache.get(lookupType)!;
+    }
+    
+    // Fallback to database query if not cached
+    const supabase = await createClient();
+    const { data: lookups } = await supabase
+        .from('code_lookups')
+        .select('name, code, aliases, extra_data')
+        .eq('field_key', lookupType);
+    
+    const entries: LookupEntry[] = (lookups || []).map(l => ({
+        name: l.name,
+        code: l.code,
+        aliases: l.aliases,
+        extra_data: l.extra_data,
+    }));
+    
+    // Cache for future lookups
+    lookupCache.set(lookupType, entries);
+    
+    return entries;
+}
+
+// ============ END LOOKUP CACHE ============
+
 /**
  * Normalize a raw value using a lookup type with full metadata
  * Returns detailed information about the match for debugging/testing
@@ -90,16 +173,12 @@ export async function normalizeWithDetails(
         return { normalized: rawValue, code: '', matchType: 'none' };
     }
 
-    const supabase = await createClient();
     const normalized = rawValue.toLowerCase().trim();
 
-    // Fetch all lookups for this type, including extra_data for custom columns
-    const { data: lookups } = await supabase
-        .from('code_lookups')
-        .select('name, code, aliases, extra_data')
-        .eq('field_key', lookupType);
+    // Get lookups from cache or database
+    const lookups = await getLookupsForType(lookupType);
 
-    if (!lookups || lookups.length === 0) {
+    if (lookups.length === 0) {
         return { normalized: rawValue, code: '', matchType: 'none' };
     }
 

@@ -286,6 +286,11 @@ export default function ProcessingProfilesPage() {
                                             </span>
                                         )}
                                     </div>
+                                    {profile.description && (
+                                        <p className="text-sm text-muted-foreground mb-2">
+                                            {profile.description}
+                                        </p>
+                                    )}
                                     <div className="flex flex-wrap gap-1">
                                         {profile.fields.slice(0, 6).map((field) => (
                                             <span

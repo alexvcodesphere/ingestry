@@ -5,14 +5,16 @@
  * Editable data grid for human-in-the-loop validation of extracted products.
  */
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
     useReactTable,
     getCoreRowModel,
     getFilteredRowModel,
+    getSortedRowModel,
     flexRender,
     type ColumnDef,
     type RowSelectionState,
+    type SortingState,
 } from "@tanstack/react-table";
 import {
     Table,
@@ -32,9 +34,23 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { AlertTriangle } from "lucide-react";
 import { EditableCell } from "./EditableCell";
 import { StatusBadge, ValidationErrors } from "./StatusBadge";
 import type { DraftLineItem, NormalizedProduct, LineItemStatus } from "@/types";
+import { FloatingActionBar, type QuickSetField } from "./FloatingActionBar";
+
+/** Type for AI uncertainty flags stored in _needs_checking */
+interface NeedsCheckingFlag {
+    field: string;
+    reason: string;
+}
 
 interface DraftOrderGridProps {
     lineItems: DraftLineItem[];
@@ -54,7 +70,13 @@ interface DraftOrderGridProps {
 const NUMBER_FIELDS = new Set(["price", "quantity"]);
 
 // Skip these internal/computed fields
-const SKIP_FIELDS = new Set(["id", "validation_errors"]);
+const SKIP_FIELDS = new Set(["id", "validation_errors", "_needs_checking"]);
+
+/** Helper to get uncertainty flag for a specific field */
+function getFieldUncertainty(data: Record<string, unknown> | undefined, fieldKey: string): NeedsCheckingFlag | undefined {
+    const flags = data?._needs_checking as NeedsCheckingFlag[] | undefined;
+    return flags?.find(f => f.field === fieldKey);
+}
 
 export function DraftOrderGrid({
     lineItems,
@@ -74,6 +96,7 @@ export function DraftOrderGrid({
     const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
     const [bulkEditData, setBulkEditData] = useState<Record<string, string | number>>({});
     const [isBulkSaving, setIsBulkSaving] = useState(false);
+    const lastClickedRowIndex = useRef<number | null>(null);
 
     // Dynamically derive editable columns from the actual data
     const editableColumns = useMemo(() => {
@@ -168,7 +191,20 @@ export function DraftOrderGrid({
     const dataColumns = useMemo<ColumnDef<DraftLineItem>[]>(() => {
         return editableColumns.map((field) => ({
             id: field.key,
-            header: field.label,
+            accessorFn: (row: DraftLineItem) => {
+                const data = row.normalized_data as unknown as Record<string, unknown>;
+                return data?.[field.key] ?? "";
+            },
+            header: ({ column }) => (
+                <button
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                >
+                    {field.label}
+                    {column.getIsSorted() === "asc" ? " ↑" : column.getIsSorted() === "desc" ? " ↓" : ""}
+                </button>
+            ),
+            enableSorting: true,
             cell: ({ row }: { row: { original: DraftLineItem } }) => {
                 const item = row.original;
                 const data = item.normalized_data as unknown as Record<string, unknown>;
@@ -206,7 +242,11 @@ export function DraftOrderGrid({
                     );
                 }
 
-                return (
+                // Check for AI uncertainty flag on this field
+                const uncertaintyFlag = getFieldUncertainty(data, field.key);
+
+                // Wrap cell content with uncertainty indicator if flagged
+                const cellContent = (
                     <EditableCell
                         value={field.type === "number" ? Number(value) || 0 : String(value)}
                         onChange={(v) => handleCellUpdate(item.id, field.key as keyof NormalizedProduct, field.type === "number" ? parseFloat(v) || 0 : v)}
@@ -216,6 +256,27 @@ export function DraftOrderGrid({
                         type={field.type === "number" ? "number" : undefined}
                     />
                 );
+
+                // If there's an uncertainty flag, wrap with indicator
+                if (uncertaintyFlag) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            {cellContent}
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                        <p className="text-sm">{uncertaintyFlag.reason}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                    );
+                }
+
+                return cellContent;
             },
             size: field.key === "name" ? 200 : field.key === "sku" ? 180 : 100,
         }));
@@ -234,14 +295,38 @@ export function DraftOrderGrid({
                         className="h-4 w-4 rounded border-gray-300"
                     />
                 ),
-                cell: ({ row }) => (
-                    <input
-                        type="checkbox"
-                        checked={row.getIsSelected()}
-                        onChange={(e) => row.toggleSelected(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300"
-                    />
-                ),
+                cell: ({ row, table }) => {
+                    const currentIndex = table.getRowModel().rows.findIndex(r => r.id === row.id);
+                    
+                    const handleClick = (e: React.MouseEvent<HTMLInputElement>) => {
+                        if (e.shiftKey && lastClickedRowIndex.current !== null) {
+                            // Shift+Click: select range
+                            const rows = table.getRowModel().rows;
+                            const start = Math.min(lastClickedRowIndex.current, currentIndex);
+                            const end = Math.max(lastClickedRowIndex.current, currentIndex);
+                            
+                            const newSelection: RowSelectionState = { ...rowSelection };
+                            for (let i = start; i <= end; i++) {
+                                newSelection[rows[i].id] = true;
+                            }
+                            setRowSelection(newSelection);
+                        } else {
+                            // Regular click: toggle single row
+                            row.toggleSelected(!row.getIsSelected());
+                            lastClickedRowIndex.current = currentIndex;
+                        }
+                    };
+                    
+                    return (
+                        <input
+                            type="checkbox"
+                            checked={row.getIsSelected()}
+                            onClick={handleClick}
+                            onChange={() => {}} // Handled by onClick
+                            className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                        />
+                    );
+                },
                 size: 40,
             },
             {
@@ -272,7 +357,7 @@ export function DraftOrderGrid({
                 size: 150,
             },
         ],
-        [dataColumns]
+        [dataColumns, rowSelection]
     );
 
     const table = useReactTable({
@@ -280,6 +365,7 @@ export function DraftOrderGrid({
         columns,
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
+        getSortedRowModel: getSortedRowModel(),
         onRowSelectionChange: setRowSelection,
         state: { rowSelection },
         getRowId: (row) => row.id,
@@ -358,9 +444,9 @@ export function DraftOrderGrid({
                 </div>
             </div>
 
-            <div className="rounded-md border overflow-auto max-h-[600px]">
-                <Table>
-                    <TableHeader className="sticky top-0 bg-background z-10">
+            <div className="rounded-md border overflow-hidden">
+                <Table containerClassName="max-h-[600px]">
+                <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
                             <TableRow key={headerGroup.id}>
                                 {headerGroup.headers.map((header) => (
@@ -404,6 +490,27 @@ export function DraftOrderGrid({
                     </TableBody>
                 </Table>
             </div>
+
+            {/* Floating Action Bar for bulk operations */}
+            <FloatingActionBar
+                selectedCount={selectedIds.length}
+                onClearSelection={() => setRowSelection({})}
+                onApprove={selectedIds.length > 0 ? () => onApproveItems(selectedIds) : undefined}
+                onRecalculate={
+                    selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
+                        ? () => handleRegenerateTemplates(selectedIds)
+                        : undefined
+                }
+                onQuickSet={onBulkUpdate ? (field, value) => {
+                    onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
+                } : undefined}
+                quickSetFields={editableColumns.map(col => ({
+                    key: col.key,
+                    label: col.label,
+                    type: "text" as const,
+                }))}
+                isLoading={isBulkSaving || isRegenerating}
+            />
 
             <Dialog open={isBulkEditOpen} onOpenChange={setIsBulkEditOpen}>
                 <DialogContent>

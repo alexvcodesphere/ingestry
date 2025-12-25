@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import type { ShopSystem } from "@/types";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 interface ProcessingProfile {
     id: string;
@@ -44,6 +45,7 @@ export default function NewOrderPage() {
     const [_isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState<string>("");
+    const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
     // Processing profile state
     const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
@@ -130,12 +132,18 @@ export default function NewOrderPage() {
                 throw new Error(result.error || "Failed to process order");
             }
 
-            setProgress("Order created! Redirecting...");
-
-            // Redirect to order detail page
-            setTimeout(() => {
-                router.push(`/dashboard/orders/${result.data.orderId}`);
-            }, 1000);
+            setProgress(`✓ Order created with ${result.data.productCount} products`);
+            setCreatedOrderId(result.data.orderId);
+            setIsLoading(false);
+            
+            // Show success toast that persists even if user navigates away
+            toast.success("Order created successfully", {
+                description: `${result.data.productCount} products extracted`,
+                action: {
+                    label: "View Order",
+                    onClick: () => router.push(`/dashboard/orders/${result.data.orderId}`),
+                },
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : "An error occurred");
             setStep("configure");
@@ -343,15 +351,32 @@ export default function NewOrderPage() {
             {step === "processing" && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Processing Order</CardTitle>
+                        <CardTitle>{createdOrderId ? "Order Created" : "Processing Order"}</CardTitle>
                         <CardDescription>
-                            Extracting products using GPT Vision...
+                            {createdOrderId 
+                                ? "Your order has been processed successfully"
+                                : "Extracting products using GPT Vision..."
+                            }
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="py-12 pb-12">
                         <div className="flex flex-col items-center gap-4">
-                            <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                            <p className="text-muted-foreground">{progress}</p>
+                            {createdOrderId ? (
+                                <>
+                                    <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                                        <span className="text-2xl">✓</span>
+                                    </div>
+                                    <p className="text-muted-foreground">{progress}</p>
+                                    <Button onClick={() => router.push(`/dashboard/orders/${createdOrderId}`)}>
+                                        View Order Details
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                                    <p className="text-muted-foreground">{progress}</p>
+                                </>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

@@ -12,7 +12,7 @@ const VALID_MODELS: VisionModel[] = ['gpt-4o', 'gemini-3-flash', 'gemini-3-pro']
 
 /**
  * GET /api/settings/vision-model
- * Get the current vision model setting for the tenant
+ * Get the current AI settings for the tenant (vision model and reasoning toggle)
  */
 export async function GET() {
     try {
@@ -39,10 +39,14 @@ export async function GET() {
         }
 
         const visionModel = tenant?.settings?.vision_model || 'gpt-4o';
+        const aiReasoningEnabled = tenant?.settings?.ai_reasoning_enabled ?? true;
 
         return NextResponse.json({
             success: true,
-            data: { vision_model: visionModel },
+            data: { 
+                vision_model: visionModel,
+                ai_reasoning_enabled: aiReasoningEnabled,
+            },
         });
     } catch (error) {
         console.error('GET /api/settings/vision-model error:', error);
@@ -55,7 +59,7 @@ export async function GET() {
 
 /**
  * PUT /api/settings/vision-model
- * Update the vision model setting for the tenant
+ * Update AI settings for the tenant (vision model and/or reasoning toggle)
  */
 export async function PUT(request: NextRequest) {
     try {
@@ -70,11 +74,20 @@ export async function PUT(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { vision_model } = body;
+        const { vision_model, ai_reasoning_enabled } = body;
 
-        if (!vision_model || !VALID_MODELS.includes(vision_model)) {
+        // Validate vision_model if provided
+        if (vision_model !== undefined && !VALID_MODELS.includes(vision_model)) {
             return NextResponse.json(
                 { success: false, error: `Invalid model. Must be one of: ${VALID_MODELS.join(', ')}` },
+                { status: 400 }
+            );
+        }
+
+        // At least one setting must be provided
+        if (vision_model === undefined && ai_reasoning_enabled === undefined) {
+            return NextResponse.json(
+                { success: false, error: 'At least one setting (vision_model or ai_reasoning_enabled) must be provided' },
                 { status: 400 }
             );
         }
@@ -85,8 +98,7 @@ export async function PUT(request: NextRequest) {
             .select('id, settings')
             .single();
 
-        console.log(`[Vision API] Fetched tenant:`, JSON.stringify(tenant));
-        console.log(`[Vision API] Fetch error:`, fetchError?.message || 'none');
+        console.log(`[AI Settings API] Fetched tenant:`, JSON.stringify(tenant));
 
         if (fetchError || !tenant) {
             return NextResponse.json(
@@ -95,20 +107,19 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        // Merge new setting with existing settings
+        // Merge new settings with existing settings
         const updatedSettings = {
             ...(tenant.settings || {}),
-            vision_model,
+            ...(vision_model !== undefined && { vision_model }),
+            ...(ai_reasoning_enabled !== undefined && { ai_reasoning_enabled }),
         };
 
-        console.log(`[Vision API] Updating settings to:`, JSON.stringify(updatedSettings));
+        console.log(`[AI Settings API] Updating settings to:`, JSON.stringify(updatedSettings));
 
         const { error: updateError } = await supabase
             .from('tenants')
             .update({ settings: updatedSettings })
             .eq('id', tenant.id);
-
-        console.log(`[Vision API] Update error:`, updateError?.message || 'none');
 
         if (updateError) {
             return NextResponse.json(
@@ -119,7 +130,10 @@ export async function PUT(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            data: { vision_model },
+            data: { 
+                vision_model: updatedSettings.vision_model,
+                ai_reasoning_enabled: updatedSettings.ai_reasoning_enabled ?? false,
+            },
         });
     } catch (error) {
         console.error('PUT /api/settings/vision-model error:', error);

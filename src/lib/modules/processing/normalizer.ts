@@ -105,6 +105,11 @@ export async function normalizeProduct(
             result[key] = value;
         }
 
+        // Preserve _needs_checking metadata if present in raw data
+        if (rawAsRecord._needs_checking) {
+            result._needs_checking = rawAsRecord._needs_checking;
+        }
+
         console.log(`[Normalizer] Result keys: ${Object.keys(result).join(', ')}`);
         return result as unknown as NormalizedProduct;
     }
@@ -155,6 +160,38 @@ export async function normalizeProducts(
 ): Promise<NormalizedProduct[]> {
     const normalized: NormalizedProduct[] = [];
 
+    // Prefetch all lookup types in ONE database query for performance
+    if (profile?.fields) {
+        const { prefetchLookups, clearLookupCache } = await import('@/lib/services/lookup-normalizer');
+        const lookupTypes = profile.fields
+            .filter(f => f.normalize_with)
+            .map(f => f.normalize_with!);
+        
+        if (lookupTypes.length > 0) {
+            await prefetchLookups(lookupTypes);
+        }
+        
+        try {
+            for (let i = 0; i < rawProducts.length; i++) {
+                try {
+                    console.log(`[Normalizer] Processing product ${i + 1}/${rawProducts.length}`);
+                    const product = await normalizeProduct(rawProducts[i], i, context, profile);
+                    normalized.push(product);
+                } catch (error) {
+                    console.error(`[Normalizer] Failed to normalize product ${i + 1}:`, error);
+                    console.error(`[Normalizer] Raw product data:`, JSON.stringify(rawProducts[i], null, 2));
+                    throw error;
+                }
+            }
+        } finally {
+            // Clear cache after processing to free memory
+            clearLookupCache();
+        }
+        
+        return normalized;
+    }
+
+    // No profile - process without prefetch
     for (let i = 0; i < rawProducts.length; i++) {
         try {
             console.log(`[Normalizer] Processing product ${i + 1}/${rawProducts.length}`);

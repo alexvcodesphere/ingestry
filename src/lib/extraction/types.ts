@@ -2,11 +2,29 @@
  * Shared types for extraction clients
  */
 
-// Dynamic product type - fields come from processing profile
+/**
+ * Uncertainty flag for a field that the AI is not 100% confident about.
+ * Used in human-in-the-loop validation to highlight fields needing review.
+ */
+export interface NeedsCheckingFlag {
+    field: string;
+    reason: string;
+}
+
+/**
+ * Product with metadata from AI extraction.
+ * Separates the extracted data from uncertainty flags.
+ */
+export interface ExtractedProductWithMeta {
+    data: Record<string, string>;
+    needs_checking?: NeedsCheckingFlag[];
+}
+
+// Legacy alias for backward compatibility
 export type ExtractedProduct = Record<string, string>;
 
 export interface ExtractionResult {
-    products: ExtractedProduct[];
+    products: ExtractedProductWithMeta[];
     rawResponse: string;
     usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }

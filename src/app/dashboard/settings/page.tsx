@@ -179,6 +179,56 @@ function VisionModelSelector() {
     );
 }
 
+function AIReasoningToggle() {
+    const [enabled, setEnabled] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        fetch("/api/settings/vision-model")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    setEnabled(data.data.ai_reasoning_enabled ?? false);
+                }
+            });
+    }, []);
+
+    const toggle = async () => {
+        const newValue = !enabled;
+        setSaving(true);
+        try {
+            const res = await fetch("/api/settings/vision-model", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ai_reasoning_enabled: newValue }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setEnabled(newValue);
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!mounted) return null;
+
+    return (
+        <button
+            onClick={toggle}
+            disabled={saving}
+            className="relative h-6 w-11 rounded-full bg-muted p-0.5 transition-colors hover:bg-muted/80 disabled:opacity-50"
+            aria-label="Toggle AI reasoning flags"
+        >
+            <div
+                className={`h-5 w-5 rounded-full transition-all duration-200 flex items-center justify-center ${enabled ? "translate-x-5 bg-primary" : "translate-x-0 bg-muted-foreground/40"}`}
+            />
+        </button>
+    );
+}
+
 export default function SettingsPage() {
     return (
         <div className="space-y-6">
@@ -239,6 +289,13 @@ export default function SettingsPage() {
                                 <p className="text-xs text-muted-foreground">Model used for PDF extraction</p>
                             </div>
                             <VisionModelSelector />
+                        </div>
+                        <div className="flex items-center justify-between px-6 py-4">
+                            <div>
+                                <p className="text-sm font-medium">AI Reasoning Flags</p>
+                                <p className="text-xs text-muted-foreground">Show uncertainty indicators (uses more tokens)</p>
+                            </div>
+                            <AIReasoningToggle />
                         </div>
                     </div>
                 </CardContent>
