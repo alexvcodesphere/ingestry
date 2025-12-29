@@ -201,16 +201,9 @@ export default function OutputProfilesPage() {
                     .eq("id", editingProfile.id);
                 if (error) throw error;
             } else {
-                // Get tenant_id for new profile
-                let tenantId = profiles[0]?.tenant_id;
-                if (!tenantId) {
-                    const { data: tenantData } = await supabase.rpc('get_user_tenant_id');
-                    tenantId = tenantData;
-                }
-                
                 const { error } = await supabase
                     .from("output_profiles")
-                    .insert({ ...payload, tenant_id: tenantId });
+                    .insert(payload);
                 if (error) throw error;
             }
             setIsDialogOpen(false);

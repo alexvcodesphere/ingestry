@@ -44,14 +44,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             );
         }
 
-        // Verify ownership
-        if (order.user_id !== user.id) {
-            return NextResponse.json(
-                { success: false, error: 'Forbidden' },
-                { status: 403 }
-            );
-        }
-
+        // Ownership is handled by RLS (Tenant isolation)
+        
         return NextResponse.json({
             success: true,
             data: order,
@@ -82,18 +76,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             );
         }
 
-        // Verify ownership
+        // Verify existence (RLS handles permission)
         const existing = await getDraftOrder(id);
         if (!existing) {
             return NextResponse.json(
                 { success: false, error: 'Order not found' },
                 { status: 404 }
-            );
-        }
-        if (existing.user_id !== user.id) {
-            return NextResponse.json(
-                { success: false, error: 'Forbidden' },
-                { status: 403 }
             );
         }
 
@@ -158,18 +146,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             );
         }
 
-        // Verify ownership
+        // Verify existence (RLS handles permission)
         const existing = await getDraftOrder(id);
         if (!existing) {
             return NextResponse.json(
                 { success: false, error: 'Order not found' },
                 { status: 404 }
-            );
-        }
-        if (existing.user_id !== user.id) {
-            return NextResponse.json(
-                { success: false, error: 'Forbidden' },
-                { status: 403 }
             );
         }
 

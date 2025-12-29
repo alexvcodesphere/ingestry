@@ -102,18 +102,10 @@ async function createDraftOrder(
 ): Promise<DraftOrder> {
     const supabase = await createClient();
 
-    // Get tenant_id for the current user
-    const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-
-    if (!tenantId) {
-        throw new Error('Failed to determine tenant for draft order');
-    }
-
     // Create the draft order
     const { data: order, error: orderError } = await supabase
         .from('draft_orders')
         .insert({
-            tenant_id: tenantId,
             name: context.order_name || null,
             status: 'pending_review',
             shop_system: context.shop_system,

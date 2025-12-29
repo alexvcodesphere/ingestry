@@ -282,18 +282,23 @@ export async function loadExtraDataLookups(): Promise<Map<string, Map<string, Re
  */
 export async function evaluateTemplate(
     template: string,
-    context: TemplateContext
+    context: TemplateContext,
+    // Optional caches to avoid N+1 DB calls
+    codeLookups?: Map<string, Map<string, string>>,
+    extraDataLookups?: Map<string, Map<string, Record<string, unknown>>>
 ): Promise<string> {
     const segments = parseTemplate(template);
-    const lookups = await loadCodeLookups();
-    const extraDataLookups = await loadExtraDataLookups();
+    
+    // Use provided caches or load from DB if missing
+    const lookups = codeLookups || await loadCodeLookups();
+    const extras = extraDataLookups || await loadExtraDataLookups();
 
     const parts: string[] = [];
     for (const segment of segments) {
         if (typeof segment === 'string') {
             parts.push(segment);
         } else {
-            const value = await resolveVariable(segment, context, lookups, extraDataLookups);
+            const value = await resolveVariable(segment, context, lookups, extras);
             parts.push(value);
         }
     }

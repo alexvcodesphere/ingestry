@@ -130,6 +130,14 @@ export function clearLookupCache(): void {
 }
 
 /**
+ * Get the current lookup cache
+ * Useful for passing to other services (like template engine) to avoid re-fetching
+ */
+export function getLookupCache(): Map<string, LookupEntry[]> {
+    return lookupCache;
+}
+
+/**
  * Get lookups for a type, using cache if available, otherwise fetch
  */
 async function getLookupsForType(lookupType: string): Promise<LookupEntry[]> {

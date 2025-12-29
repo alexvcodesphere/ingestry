@@ -248,9 +248,6 @@ export default function CodeLookupsPage() {
                 .map(a => a.trim())
                 .filter(a => a.length > 0);
 
-            // Get tenant_id via RPC
-            const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-
             if (editingLookup) {
                 const { error } = await supabase
                     .from("code_lookups")
@@ -266,7 +263,6 @@ export default function CodeLookupsPage() {
                 const { error } = await supabase
                     .from("code_lookups")
                     .insert({
-                        tenant_id: tenantId,
                         field_key: activeType,
                         name: formData.name,
                         code: formData.code.toUpperCase(),
@@ -301,21 +297,11 @@ export default function CodeLookupsPage() {
 
         const newFieldKey = typeFormData.slug || typeFormData.label.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
-        // Get tenant_id via RPC
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-
-        if (!tenantId) {
-            alert("No tenant found. Please contact support.");
-            setIsTypeSaving(false);
-            return;
-        }
-
         try {
             // Insert a placeholder entry to create this field_key
             const { error } = await supabase
                 .from("code_lookups")
                 .insert({
-                    tenant_id: tenantId,
                     field_key: newFieldKey,
                     name: "Example",
                     code: "00",
@@ -786,9 +772,7 @@ export default function CodeLookupsPage() {
                             onClick={async () => {
                                 if (!newColumnData.label || !newColumnData.key) return;
                                 const supabase = createClient();
-                                const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
                                 await supabase.from("lookup_column_defs").insert({
-                                    tenant_id: tenantId,
                                     field_key: activeType,
                                     column_key: newColumnData.key,
                                     column_label: newColumnData.label,
@@ -809,4 +793,3 @@ export default function CodeLookupsPage() {
         </div>
     );
 }
-

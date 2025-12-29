@@ -179,21 +179,21 @@ export default function ProcessingProfilesPage() {
         const supabase = createClient();
 
         try {
-            // Get tenant_id
-            const tenantId = profiles[0]?.tenant_id;
-            let finalTenantId = tenantId;
-
-            if (!finalTenantId) {
-                const { data: tenantData } = await supabase.rpc('get_user_tenant_id');
-                finalTenantId = tenantData;
-            }
-
             const profileData = {
                 name: formName,
                 description: formDescription || null,
                 fields: formFields,
                 is_default: formIsDefault,
             };
+
+            // If setting as default, unset others first to avoid unique constraint error
+            // RLS ensures this only affects the current tenant
+            if (formIsDefault) {
+                await supabase
+                    .from("input_profiles")
+                    .update({ is_default: false })
+                    .eq("is_default", true);
+            }
 
             if (editingProfile) {
                 const { error } = await supabase
@@ -204,17 +204,8 @@ export default function ProcessingProfilesPage() {
             } else {
                 const { error } = await supabase
                     .from("input_profiles")
-                    .insert({ ...profileData, tenant_id: finalTenantId });
+                    .insert(profileData);
                 if (error) throw error;
-            }
-
-            // If setting as default, unset others
-            if (formIsDefault && finalTenantId) {
-                await supabase
-                    .from("input_profiles")
-                    .update({ is_default: false })
-                    .eq("tenant_id", finalTenantId)
-                    .neq("name", formName);
             }
 
             setIsEditorOpen(false);

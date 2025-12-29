@@ -19,7 +19,10 @@ export async function normalizeProduct(
     raw: RawExtractedProduct,
     index: number,
     context: ProcessingContext,
-    profile?: ProcessingProfile | null
+    profile?: ProcessingProfile | null,
+    // Optional caches to avoid N+1 DB calls in template engine
+    codeLookups?: Map<string, Map<string, string>>,
+    extraDataLookups?: Map<string, Map<string, Record<string, unknown>>>
 ): Promise<NormalizedProduct> {
     // Cast raw to record for dynamic field access
     const rawAsRecord = raw as unknown as Record<string, string>;
@@ -72,7 +75,13 @@ export async function normalizeProduct(
         for (const field of profile.fields) {
             if (field.use_template && field.template) {
                 try {
-                    const templatedValue = await evaluateTemplate(field.template, templateContext);
+                    // Pass caches to avoid DB calls
+                    const templatedValue = await evaluateTemplate(
+                        field.template, 
+                        templateContext,
+                        codeLookups,
+                        extraDataLookups
+                    );
                     templatedValues[field.key] = templatedValue;
                     console.log(`[Normalizer] Templated field ${field.key}: ${templatedValue}`);
                 } catch (templateError) {
@@ -127,28 +136,7 @@ export async function normalizeProduct(
     return result as unknown as NormalizedProduct;
 }
 
-/**
- * Parse a field value based on common field name patterns
- * This handles quantity/price parsing without hardcoding specific fields
- */
-function parseFieldValue(key: string, value: string): unknown {
-    if (!value) return value;
-
-    const keyLower = key.toLowerCase();
-
-    // Quantity-like fields should be numbers
-    if (keyLower.includes('quantity') || keyLower.includes('qty') || keyLower.includes('amount')) {
-        return parseQuantity(value);
-    }
-
-    // Price-like fields should be parsed
-    if (keyLower.includes('price') || keyLower.includes('cost') || keyLower.includes('total')) {
-        return parsePrice(value).price;
-    }
-
-    // Everything else stays as string
-    return value;
-}
+// ... existing code ...
 
 /**
  * Normalize multiple raw products
@@ -162,20 +150,57 @@ export async function normalizeProducts(
 
     // Prefetch all lookup types in ONE database query for performance
     if (profile?.fields) {
-        const { prefetchLookups, clearLookupCache } = await import('@/lib/services/lookup-normalizer');
+        const { prefetchLookups, clearLookupCache, getLookupCache } = await import('@/lib/services/lookup-normalizer');
         const lookupTypes = profile.fields
             .filter(f => f.normalize_with)
             .map(f => f.normalize_with!);
         
+        let codeLookups: Map<string, Map<string, string>> | undefined;
+        let extraDataLookups: Map<string, Map<string, Record<string, unknown>>> | undefined;
+
         if (lookupTypes.length > 0) {
             await prefetchLookups(lookupTypes);
+            
+            // Build optimization maps from cache
+            const cache = getLookupCache();
+            codeLookups = new Map();
+            extraDataLookups = new Map();
+            
+            for (const [type, entries] of cache.entries()) {
+                const codeMap = new Map<string, string>();
+                const extraMap = new Map<string, Record<string, unknown>>();
+                
+                for (const entry of entries) {
+                    const normalizedName = entry.name.toLowerCase().trim();
+                    codeMap.set(normalizedName, entry.code);
+                    if (entry.extra_data) extraMap.set(normalizedName, entry.extra_data);
+                    
+                    if (entry.aliases) {
+                        for (const alias of entry.aliases) {
+                            const normalizedAlias = alias.toLowerCase().trim();
+                            codeMap.set(normalizedAlias, entry.code);
+                            if (entry.extra_data) extraMap.set(normalizedAlias, entry.extra_data);
+                        }
+                    }
+                }
+                codeLookups.set(type, codeMap);
+                extraDataLookups.set(type, extraMap);
+            }
         }
         
         try {
             for (let i = 0; i < rawProducts.length; i++) {
                 try {
                     console.log(`[Normalizer] Processing product ${i + 1}/${rawProducts.length}`);
-                    const product = await normalizeProduct(rawProducts[i], i, context, profile);
+                    // Pass the optimized maps to normalizeProduct
+                    const product = await normalizeProduct(
+                        rawProducts[i], 
+                        i, 
+                        context, 
+                        profile,
+                        codeLookups,
+                        extraDataLookups
+                    );
                     normalized.push(product);
                 } catch (error) {
                     console.error(`[Normalizer] Failed to normalize product ${i + 1}:`, error);
@@ -205,6 +230,29 @@ export async function normalizeProducts(
     }
 
     return normalized;
+}
+
+/**
+ * Parse a field value based on common field name patterns
+ * This handles quantity/price parsing without hardcoding specific fields
+ */
+function parseFieldValue(key: string, value: string): unknown {
+    if (!value) return value;
+
+    const keyLower = key.toLowerCase();
+
+    // Quantity-like fields should be numbers
+    if (keyLower.includes('quantity') || keyLower.includes('qty') || keyLower.includes('amount')) {
+        return parseQuantity(value);
+    }
+
+    // Price-like fields should be parsed
+    if (keyLower.includes('price') || keyLower.includes('cost') || keyLower.includes('total')) {
+        return parsePrice(value).price;
+    }
+
+    // Everything else stays as string
+    return value;
 }
 
 /**

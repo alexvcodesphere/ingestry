@@ -494,24 +494,23 @@ export function DraftOrderGrid({
             {/* Floating Action Bar for bulk operations */}
             <FloatingActionBar
                 selectedCount={selectedIds.length}
-                onClearSelection={() => setRowSelection({})}
-                onApprove={selectedIds.length > 0 ? () => onApproveItems(selectedIds) : undefined}
-                onRecalculate={
-                    selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
-                        ? () => handleRegenerateTemplates(selectedIds)
-                        : undefined
-                }
-                onQuickSet={onBulkUpdate ? (field, value) => {
-                    onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
-                } : undefined}
-                quickSetFields={editableColumns.map(col => ({
-                    key: col.key,
-                    label: col.label,
-                    type: "text" as const,
-                }))}
-                isLoading={isBulkSaving || isRegenerating}
-            />
-
+                    onClearSelection={() => setRowSelection({})}
+                    onApprove={selectedIds.length > 0 ? () => onApproveItems(selectedIds) : undefined}
+                    onRecalculate={
+                        selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
+                            ? () => handleRegenerateTemplates(selectedIds)
+                            : undefined
+                    }
+                    onQuickSet={onBulkUpdate ? (field, value) => {
+                        onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
+                    } : undefined}
+                    quickSetFields={editableColumns.map(col => ({
+                        key: col.key,
+                        label: col.label,
+                        type: "text" as const,
+                    }))}
+                    isLoading={isBulkSaving || isRegenerating}
+                />
             <Dialog open={isBulkEditOpen} onOpenChange={setIsBulkEditOpen}>
                 <DialogContent>
                     <DialogHeader>
