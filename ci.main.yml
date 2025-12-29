@@ -6,7 +6,7 @@ prepare:
     - name: Install Dependencies
       command: npm install
     - name: Build
-      command: rm -rf .next && NODE_OPTIONS="--max-old-space-size=8192" npm run build -- --no-turbopack
+      command: rm -rf .next && NODE_OPTIONS="--max-old-space-size=8192" npm run build -- --webpack
 test:
   steps: []
 run:
