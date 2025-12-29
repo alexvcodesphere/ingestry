@@ -16,6 +16,16 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const configSections = [
     {
@@ -229,6 +239,82 @@ function AIReasoningToggle() {
     );
 }
 
+function DataResetSection() {
+    const [open, setOpen] = useState(false);
+    const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+
+    const handleReset = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch("/api/tenant/reset", {
+                method: "DELETE",
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("Data cleared successfully.");
+                setOpen(false);
+                setStep(1);
+            } else {
+                alert("Failed to clear data: " + data.error);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Failed to clear data.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOpenChange = (newOpen: boolean) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+            setTimeout(() => setStep(1), 300); // Reset step after closing
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-between px-6 py-4">
+            <div>
+                <p className="text-sm font-medium text-red-600 dark:text-red-400">Clear All Data</p>
+                <p className="text-xs text-muted-foreground">Delete all orders and jobs permanently</p>
+            </div>
+            
+            <Dialog open={open} onOpenChange={handleOpenChange}>
+                <DialogTrigger asChild>
+                    <Button variant="destructive" size="sm">Clear Data</Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {step === 1 ? "Clear Tenant Data?" : "Are you absolutely sure?"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {step === 1 
+                                ? "This will permanently delete all draft orders, line items, and job history for your current tenant." 
+                                : "This action cannot be undone. All your extracted data will be lost forever."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="ghost" onClick={() => setOpen(false)} disabled={loading}>
+                            Cancel
+                        </Button>
+                        {step === 1 ? (
+                            <Button variant="destructive" onClick={() => setStep(2)}>
+                                Yes, Continue
+                            </Button>
+                        ) : (
+                            <Button variant="destructive" onClick={handleReset} disabled={loading}>
+                                {loading ? "Deleting..." : "Confirm Delete"}
+                            </Button>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
 export default function SettingsPage() {
     return (
         <div className="space-y-6">
@@ -327,6 +413,16 @@ export default function SettingsPage() {
                             </div>
                         ))}
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Danger Zone */}
+            <Card className="border-red-200 dark:border-red-900">
+                <CardHeader className="border-b border-red-100 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20">
+                    <CardTitle className="text-base font-medium text-red-900 dark:text-red-200">Danger Zone</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <DataResetSection />
                 </CardContent>
             </Card>
         </div>
