@@ -1,0 +1,28 @@
+schemaVersion: v0.2
+prepare:
+  steps:
+    - name: Update node
+      command: sudo n lts
+    - name: Install Dependencies
+      command: npm install
+    - name: Build
+      command: rm -rf .next && NODE_OPTIONS="--max-old-space-size=8192" npm run build --
+test:
+  steps: []
+run:
+  service:
+    steps:
+      - name: Update node
+        command: sudo n lts
+      - name: Run
+        command: npm run start
+    plan: 9
+    replicas: 1
+    network:
+      ports:
+        - port: 3000
+          isPublic: false
+      paths:
+        - port: 3000
+          path: /
+    env: {}
