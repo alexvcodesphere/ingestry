@@ -284,15 +284,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
-            // --- BATCH PERFORMANCE FIX: SINGLE DATABASE CALL ---
+            // --- BATCH UPDATE: Use individual updates (upsert requires all non-null columns) ---
             if (batchUpdates.length > 0) {
-                const { error: batchError } = await supabase
-                    .from('draft_line_items')
-                    .upsert(batchUpdates);
+                const updatePromises = batchUpdates.map(update => 
+                    supabase
+                        .from('draft_line_items')
+                        .update({
+                            normalized_data: update.normalized_data,
+                            user_modified: update.user_modified,
+                            status: update.status
+                        })
+                        .eq('id', update.id)
+                );
                 
-                if (batchError) {
-                    console.error('[Regenerate] Batch update failed:', batchError);
-                    return NextResponse.json({ success: false, error: 'Failed to save changes' }, { status: 500 });
+                const results = await Promise.all(updatePromises);
+                const errors = results.filter(r => r.error);
+                
+                if (errors.length > 0) {
+                    console.error('[Regenerate] Some updates failed:', errors.map(e => e.error));
+                    return NextResponse.json({ success: false, error: 'Failed to save some changes' }, { status: 500 });
                 }
             }
 
