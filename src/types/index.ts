@@ -211,3 +211,16 @@ export interface ProcessingProfile {
     created_at?: string;
     updated_at?: string;
 }
+
+// ============================================
+// Tenant Types
+// ============================================
+
+export interface TenantUserProfile {
+    user_id: string;
+    email: string;
+    full_name?: string;
+    avatar_url?: string;
+    tenant_id: string;
+    role: string;
+}

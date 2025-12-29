@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { createClient } from "@/lib/supabase/client";
-import type { Job } from "@/types";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import type { Job, TenantUserProfile } from "@/types";
 
 // Live timer component that updates every second
 function LiveTimer({ startTime }: { startTime: Date }) {
@@ -114,6 +115,7 @@ export default function DashboardPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
+    const [members, setMembers] = useState<Record<string, TenantUserProfile>>({});
 
     const fetchData = useCallback(async () => {
         const supabase = createClient();
@@ -140,6 +142,26 @@ export default function DashboardPage() {
         const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }, [fetchData]);
+
+    // Fetch tenant members for user info
+    useEffect(() => {
+        const fetchMembers = async () => {
+            try {
+                const response = await fetch('/api/tenant/members');
+                const result = await response.json();
+                if (result.success && Array.isArray(result.data)) {
+                    const memberMap = result.data.reduce((acc: Record<string, TenantUserProfile>, member: TenantUserProfile) => {
+                        acc[member.user_id] = member;
+                        return acc;
+                    }, {});
+                    setMembers(memberMap);
+                }
+            } catch (error) {
+                console.error("Failed to fetch members:", error);
+            }
+        };
+        fetchMembers();
+    }, []);
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);
@@ -202,6 +224,11 @@ export default function DashboardPage() {
                     {new Date(job.created_at).toLocaleString()}
                 </span>
             ),
+        },
+        {
+            key: "user",
+            header: "User",
+            render: (job) => <UserAvatar user={members[job.user_id]} />,
         },
         {
             key: "duration",

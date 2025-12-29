@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Trash2, Pencil } from "lucide-react";
-import type { DraftOrder, DraftOrderStatus } from "@/types";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import type { DraftOrder, DraftOrderStatus, TenantUserProfile } from "@/types";
 
 const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
     processing: {
@@ -49,6 +51,7 @@ export default function OrdersPage() {
     const [editingName, setEditingName] = useState("");
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
+    const [members, setMembers] = useState<Record<string, TenantUserProfile>>({});
 
     const fetchOrders = useCallback(async () => {
         setIsLoading(true);
@@ -77,6 +80,26 @@ export default function OrdersPage() {
     useEffect(() => {
         fetchOrders();
     }, [fetchOrders]);
+
+    // Fetch tenant members for user info
+    useEffect(() => {
+        const fetchMembers = async () => {
+            try {
+                const response = await fetch('/api/tenant/members');
+                const result = await response.json();
+                if (result.success && Array.isArray(result.data)) {
+                    const memberMap = result.data.reduce((acc: Record<string, TenantUserProfile>, member: TenantUserProfile) => {
+                        acc[member.user_id] = member;
+                        return acc;
+                    }, {});
+                    setMembers(memberMap);
+                }
+            } catch (error) {
+                console.error("Failed to fetch members:", error);
+            }
+        };
+        fetchMembers();
+    }, []);
 
     const handleDelete = async (orderId: string) => {
         if (!confirm("Delete this order? This cannot be undone.")) return;
@@ -207,6 +230,11 @@ export default function OrdersPage() {
             key: "shop_system",
             header: "Shop System",
             render: (order) => getShopSystemBadge(order.shop_system),
+        },
+        {
+            key: "user",
+            header: "User",
+            render: (order) => <UserAvatar user={members[order.user_id]} />,
         },
         {
             key: "created_at",

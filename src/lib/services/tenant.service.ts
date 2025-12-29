@@ -5,6 +5,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import type { TenantUserProfile } from '@/types';
 
 export interface Tenant {
     id: string;
@@ -201,5 +202,27 @@ export async function deleteLookupType(id: string): Promise<boolean> {
 export async function seedLookupTypesForTenant(_tenantId: string): Promise<void> {
     // No default lookup types - users create their own
     // This function is kept for backwards compatibility but does nothing
+}
+
+/**
+ * Get all members of the current tenant with their profile info
+ */
+export async function getTenantMembers(): Promise<TenantUserProfile[]> {
+    const supabase = await createClient();
+    const tenantId = await getCurrentTenantId();
+
+    if (!tenantId) return [];
+
+    const { data, error } = await supabase
+        .from('tenant_user_profiles')
+        .select('*')
+        .eq('tenant_id', tenantId);
+
+    if (error || !data) {
+        console.error('Failed to fetch tenant members:', error);
+        return [];
+    }
+
+    return data as TenantUserProfile[];
 }
 
