@@ -38,7 +38,7 @@ export interface TemplateContext {
     values: Record<string, string>;
     /** Sequence number for this product in the batch */
     sequence: number;
-    /** Mapping from field key to lookup type (from normalize_with) */
+    /** Mapping from field key to catalog key (from catalog_key) */
     lookupTypeMapping?: Record<string, string>;
 }
 

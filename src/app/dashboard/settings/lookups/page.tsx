@@ -142,7 +142,7 @@ export default function CodeLookupsPage() {
 
     // Check if tester should be shown (from settings)
     useEffect(() => {
-        const saved = localStorage.getItem("showNormalizationTester");
+        const saved = localStorage.getItem("showCatalogMatchingTester");
         setShowTester(saved === "true");
     }, []);
 
@@ -196,8 +196,8 @@ export default function CodeLookupsPage() {
         }
     }, [activeType, fetchLookups, fetchColumnDefs]);
 
-    // Test normalization
-    const handleTestNormalization = async () => {
+    // Test catalog matching
+    const handleTestCatalogMatching = async () => {
         if (!testInput.trim() || !activeType) return;
 
         setIsTesting(true);
@@ -401,9 +401,9 @@ export default function CodeLookupsPage() {
                     <CardContent className="py-4">
                         <div className="flex items-start gap-6">
                             <div className="flex-1">
-                                <Label className="text-sm font-medium">Test Normalization</Label>
+                                <Label className="text-sm font-medium">Test Catalog Matching</Label>
                                 <p className="text-xs text-muted-foreground mb-2">
-                                    Type a value to see how it would be normalized (supports fuzzy matching for typos)
+                                    Type a value to see how it would be matched against the catalog
                                 </p>
                                 <div className="flex gap-2">
                                     <Input
@@ -411,10 +411,10 @@ export default function CodeLookupsPage() {
                                         onChange={(e) => setTestInput(e.target.value)}
                                         placeholder={`e.g., "Navy Blue", "Navvy", "bleu marine"`}
                                         className="max-w-xs"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleTestNormalization()}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleTestCatalogMatching()}
                                     />
                                     <Button
-                                        onClick={handleTestNormalization}
+                                        onClick={handleTestCatalogMatching}
                                         disabled={isTesting || !testInput.trim()}
                                         variant="secondary"
                                     >

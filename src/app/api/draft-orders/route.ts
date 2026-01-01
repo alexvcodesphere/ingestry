@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
         const { prompt: systemPrompt, profile } = await getPromptForProfile(
             profileId || undefined,
             { enableReasoning: aiReasoningEnabled }
+            // catalogGuide is added below after we know the profile fields
         );
 
         console.log(`[API] Prompt includes needs_checking instructions: ${systemPrompt.includes('needs_checking')}`);
@@ -153,6 +154,19 @@ export async function POST(request: NextRequest) {
 
         console.log(`[API] Profile: ${profile.name}`);
         console.log(`[API] Profile fields: ${profile.fields?.map((f: { key: string }) => f.key).join(', ')}`);
+
+        // Pre-fetch catalog data for semantic matching (single DB query)
+        const catalogKeys = profile.fields
+            ?.filter((f: { catalog_key?: string }) => f.catalog_key)
+            .map((f: { catalog_key?: string }) => f.catalog_key!) || [];
+        
+        let catalogGuide = '';
+        if (catalogKeys.length > 0) {
+            const { getCatalogMatchGuide } = await import('@/lib/services/catalog-reconciler');
+            catalogGuide = await getCatalogMatchGuide(catalogKeys);
+            console.log(`[API] Catalog guide generated for ${catalogKeys.length} keys`);
+        }
+
         console.log(`[API] Prompt preview: ${systemPrompt.substring(0, 200)}...`);
 
         // Extract products using selected vision model

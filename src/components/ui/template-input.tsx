@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 export interface FieldConfig {
     key: string;
     label: string;
-    normalize_with?: string;
+    catalog_key?: string;
     use_template?: boolean;
     fallback?: string;
 }
@@ -52,11 +52,11 @@ function buildSuggestions(fields: FieldConfig[]): Suggestion[] {
             insertText: `{${field.key}}`,
         });
 
-        // .code modifier for fields with normalize_with
-        if (field.normalize_with) {
+        // .code modifier for fields with catalog_key
+        if (field.catalog_key) {
             suggestions.push({
                 text: `${field.key}.code`,
-                description: `Code from ${field.normalize_with} lookup`,
+                description: `Code from ${field.catalog_key} catalog`,
                 insertText: `{${field.key}.code}`,
             });
         }

@@ -1,21 +1,22 @@
 /**
- * Product Normalizer Module
+ * Product Catalog Matching Module
  * Transforms raw GPT Vision output into normalized product format.
  * 
  * This module is fully dynamic - it only processes fields defined in the profile.
- * No hardcoded field assumptions.
+ * AI semantic matching resolves synonyms during extraction; this module retrieves
+ * metadata (codes, extra_data) for the template engine.
  */
 
 import type { RawExtractedProduct, NormalizedProduct, ProcessingContext } from '@/types';
 import type { ProcessingProfile } from '@/lib/extraction';
-import { normalizeUsingLookup } from '@/lib/services/lookup-normalizer';
+import { matchAgainstCatalog } from '@/lib/services/catalog-reconciler';
 import { evaluateTemplate, TemplateContext } from '@/lib/services/template-engine';
 
 /**
- * Normalize a single raw product from GPT Vision output
+ * Process catalog matching for a single raw product from GPT Vision output
  * Processing is entirely driven by the profile fields.
  */
-export async function normalizeProduct(
+export async function processCatalogMatching(
     raw: RawExtractedProduct,
     index: number,
     context: ProcessingContext,
@@ -26,21 +27,21 @@ export async function normalizeProduct(
 ): Promise<NormalizedProduct> {
     // Cast raw to record for dynamic field access
     const rawAsRecord = raw as unknown as Record<string, string>;
-    const normalizedValues: Record<string, string> = {};
-    const lookupTypeMapping: Record<string, string> = {};
+    const matchedValues: Record<string, string> = {};
+    const catalogKeyMapping: Record<string, string> = {};
 
-    // Step 1: Apply normalizations for fields that have normalize_with configured
-    // Also build the lookup type mapping for template engine
+    // Step 1: Apply catalog matching for fields that have catalog_key configured
+    // Also build the catalog key mapping for template engine
     if (profile?.fields) {
         for (const field of profile.fields) {
-            if (field.normalize_with) {
-                // Build mapping: field key -> lookup type
-                lookupTypeMapping[field.key] = field.normalize_with;
+            if (field.catalog_key) {
+                // Build mapping: field key -> catalog key
+                catalogKeyMapping[field.key] = field.catalog_key;
                 
                 const rawValue = rawAsRecord[field.key];
                 if (typeof rawValue === 'string' && rawValue) {
-                    const normalized = await normalizeUsingLookup(rawValue, field.normalize_with);
-                    normalizedValues[field.key] = normalized;
+                    const matched = await matchAgainstCatalog(rawValue, field.catalog_key);
+                    matchedValues[field.key] = matched;
                 }
             }
         }
@@ -50,23 +51,22 @@ export async function normalizeProduct(
     // This ensures templates can use fallback values
     const valuesWithFallbacks: Record<string, string> = {
         ...rawAsRecord,
-        ...normalizedValues,
+        ...matchedValues,
     };
     if (profile?.fields) {
         for (const field of profile.fields) {
             const currentValue = valuesWithFallbacks[field.key];
             if (field.fallback && (!currentValue || currentValue === '')) {
                 valuesWithFallbacks[field.key] = field.fallback;
-                console.log(`[Normalizer] Applied fallback for ${field.key}: ${field.fallback}`);
             }
         }
     }
 
-    // Step 3: Build template context with fallbacks and lookup mapping
+    // Step 3: Build template context with fallbacks and catalog key mapping
     const templateContext: TemplateContext = {
         values: valuesWithFallbacks,
         sequence: index + 1,
-        lookupTypeMapping,
+        lookupTypeMapping: catalogKeyMapping,
     };
 
     // Step 4: Process templated fields
@@ -83,19 +83,15 @@ export async function normalizeProduct(
                         extraDataLookups
                     );
                     templatedValues[field.key] = templatedValue;
-                    console.log(`[Normalizer] Templated field ${field.key}: ${templatedValue}`);
                 } catch (templateError) {
-                    console.error(`[Normalizer] Failed to evaluate template for ${field.key}:`, templateError);
+                    console.error(`[CatalogMatching] Failed to evaluate template for ${field.key}:`, templateError);
                     templatedValues[field.key] = '';
                 }
             }
         }
     }
 
-    // Step 5: Build result with only the fields defined in the profile
     if (profile?.fields && profile.fields.length > 0) {
-        console.log(`[Normalizer] Using profile fields: ${profile.fields.map(f => f.key).join(', ')}`);
-
         const result: Record<string, unknown> = {};
 
         for (const field of profile.fields) {
@@ -106,7 +102,7 @@ export async function normalizeProduct(
             if (field.use_template && templatedValues[key] !== undefined) {
                 value = templatedValues[key];
             } else {
-                // Use valuesWithFallbacks which already has normalized + fallback values
+                // Use valuesWithFallbacks which already has matched + fallback values
                 const fallbackedValue = valuesWithFallbacks[key] || '';
                 value = parseFieldValue(key, fallbackedValue);
             }
@@ -119,12 +115,11 @@ export async function normalizeProduct(
             result._needs_checking = rawAsRecord._needs_checking;
         }
 
-        console.log(`[Normalizer] Result keys: ${Object.keys(result).join(', ')}`);
         return result as unknown as NormalizedProduct;
     }
 
     // Fallback: No profile - just pass through raw data with basic processing
-    console.log('[Normalizer] No profile - passing through raw data');
+    console.log('[CatalogMatching] No profile - passing through raw data');
     const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(rawAsRecord)) {
@@ -139,30 +134,30 @@ export async function normalizeProduct(
 // ... existing code ...
 
 /**
- * Normalize multiple raw products
+ * Process catalog matching for multiple raw products
  */
-export async function normalizeProducts(
+export async function processCatalogMatchingBatch(
     rawProducts: RawExtractedProduct[],
     context: ProcessingContext,
     profile?: ProcessingProfile | null
 ): Promise<NormalizedProduct[]> {
-    const normalized: NormalizedProduct[] = [];
+    const processed: NormalizedProduct[] = [];
 
-    // Prefetch all lookup types in ONE database query for performance
+    // Prefetch all catalog entries in ONE database query for performance
     if (profile?.fields) {
-        const { prefetchLookups, clearLookupCache, getLookupCache } = await import('@/lib/services/lookup-normalizer');
-        const lookupTypes = profile.fields
-            .filter(f => f.normalize_with)
-            .map(f => f.normalize_with!);
+        const { prefetchCatalog, clearCatalogCache, getCatalogCache } = await import('@/lib/services/catalog-reconciler');
+        const catalogKeys = profile.fields
+            .filter(f => f.catalog_key)
+            .map(f => f.catalog_key!);
         
         let codeLookups: Map<string, Map<string, string>> | undefined;
         let extraDataLookups: Map<string, Map<string, Record<string, unknown>>> | undefined;
 
-        if (lookupTypes.length > 0) {
-            await prefetchLookups(lookupTypes);
+        if (catalogKeys.length > 0) {
+            await prefetchCatalog(catalogKeys);
             
             // Build optimization maps from cache
-            const cache = getLookupCache();
+            const cache = getCatalogCache();
             codeLookups = new Map();
             extraDataLookups = new Map();
             
@@ -191,9 +186,8 @@ export async function normalizeProducts(
         try {
             for (let i = 0; i < rawProducts.length; i++) {
                 try {
-                    console.log(`[Normalizer] Processing product ${i + 1}/${rawProducts.length}`);
-                    // Pass the optimized maps to normalizeProduct
-                    const product = await normalizeProduct(
+                    // Pass the optimized maps to processCatalogMatching
+                    const product = await processCatalogMatching(
                         rawProducts[i], 
                         i, 
                         context, 
@@ -201,36 +195,39 @@ export async function normalizeProducts(
                         codeLookups,
                         extraDataLookups
                     );
-                    normalized.push(product);
+                    processed.push(product);
                 } catch (error) {
-                    console.error(`[Normalizer] Failed to normalize product ${i + 1}:`, error);
-                    console.error(`[Normalizer] Raw product data:`, JSON.stringify(rawProducts[i], null, 2));
+                    console.error(`[CatalogMatching] Failed to process product ${i + 1}:`, error);
+                    console.error(`[CatalogMatching] Raw product data:`, JSON.stringify(rawProducts[i], null, 2));
                     throw error;
                 }
             }
         } finally {
             // Clear cache after processing to free memory
-            clearLookupCache();
+            clearCatalogCache();
         }
         
-        return normalized;
+        return processed;
     }
 
     // No profile - process without prefetch
     for (let i = 0; i < rawProducts.length; i++) {
         try {
-            console.log(`[Normalizer] Processing product ${i + 1}/${rawProducts.length}`);
-            const product = await normalizeProduct(rawProducts[i], i, context, profile);
-            normalized.push(product);
+            const product = await processCatalogMatching(rawProducts[i], i, context, profile);
+            processed.push(product);
         } catch (error) {
-            console.error(`[Normalizer] Failed to normalize product ${i + 1}:`, error);
-            console.error(`[Normalizer] Raw product data:`, JSON.stringify(rawProducts[i], null, 2));
+            console.error(`[CatalogMatching] Failed to process product ${i + 1}:`, error);
+            console.error(`[CatalogMatching] Raw product data:`, JSON.stringify(rawProducts[i], null, 2));
             throw error;
         }
     }
 
-    return normalized;
+    return processed;
 }
+
+// Keep legacy export names for backward compatibility
+export { processCatalogMatching as normalizeProduct };
+export { processCatalogMatchingBatch as normalizeProducts };
 
 /**
  * Parse a field value based on common field name patterns

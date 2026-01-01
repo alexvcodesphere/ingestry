@@ -1,15 +1,19 @@
 /**
- * Lookup Normalizer Service
- * Normalizes raw values using lookup type aliases from code_lookups table.
- * Supports exact matching, alias matching, fuzzy matching, and compound value handling.
+ * Catalog Reconciler Service
+ * Matches extracted values against catalog entries using exact matching.
+ * Supports alias matching, fuzzy matching, and compound value handling.
+ * 
+ * Key change from lookup-normalizer: The AI now receives a "Catalog Match Guide"
+ * enabling it to reconcile synonyms during extraction. This service performs
+ * exact-match lookups on the pre-resolved values.
  */
 
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Match result with metadata about how the match was found
+ * Result of catalog reconciliation with metadata
  */
-export interface NormalizationResult {
+export interface ReconciliationResult {
     normalized: string;
     code: string;
     matchType: 'exact' | 'alias' | 'fuzzy' | 'compound' | 'none';
@@ -77,24 +81,54 @@ function getFuzzyThreshold(length: number): number {
     return 3;
 }
 
-// ============ LOOKUP CACHE FOR PERFORMANCE ============
+// ============ CATALOG CACHE FOR PERFORMANCE ============
 
-interface LookupEntry {
+interface CatalogEntry {
     name: string;
     code: string;
     aliases?: string[];
     extra_data?: Record<string, unknown>;
 }
 
-/** In-memory cache of lookups, keyed by lookup type (field_key) */
-let lookupCache: Map<string, LookupEntry[]> = new Map();
+/** In-memory cache of catalog entries, keyed by catalog key */
+let catalogCache: Map<string, CatalogEntry[]> = new Map();
 
 /**
- * Prefetch all lookups for a set of lookup types in ONE database query.
+ * Get the Catalog Match Guide for AI prompt injection.
+ * Returns a formatted string listing valid catalog names for each key.
+ * This enables the AI to reconcile synonyms during extraction.
+ */
+export async function getCatalogMatchGuide(catalogKeys: string[]): Promise<string> {
+    if (catalogKeys.length === 0) return '';
+    
+    const supabase = await createClient();
+    
+    const { data } = await supabase
+        .from('code_lookups')
+        .select('field_key, name')
+        .in('field_key', catalogKeys);
+    
+    if (!data || data.length === 0) return '';
+    
+    // Group by field_key
+    const grouped = data.reduce((acc, row) => {
+        if (!acc[row.field_key]) acc[row.field_key] = [];
+        acc[row.field_key].push(row.name);
+        return acc;
+    }, {} as Record<string, string[]>);
+    
+    // Format as guide for AI
+    return Object.entries(grouped)
+        .map(([key, names]) => `${key}: ${names.join(', ')}`)
+        .join('\n');
+}
+
+/**
+ * Prefetch all catalog entries for a set of catalog keys in ONE database query.
  * Call this before processing to avoid N+1 query problems.
  */
-export async function prefetchLookups(lookupTypes: string[]): Promise<void> {
-    if (lookupTypes.length === 0) return;
+export async function prefetchCatalog(catalogKeys: string[]): Promise<void> {
+    if (catalogKeys.length === 0) return;
     
     const supabase = await createClient();
     
@@ -102,48 +136,48 @@ export async function prefetchLookups(lookupTypes: string[]): Promise<void> {
     const { data: lookups } = await supabase
         .from('code_lookups')
         .select('field_key, name, code, aliases, extra_data')
-        .in('field_key', lookupTypes);
+        .in('field_key', catalogKeys);
     
     if (!lookups) return;
     
     // Group by field_key and cache
-    lookupCache = new Map();
+    catalogCache = new Map();
     for (const lookup of lookups) {
-        const existing = lookupCache.get(lookup.field_key) || [];
+        const existing = catalogCache.get(lookup.field_key) || [];
         existing.push({
             name: lookup.name,
             code: lookup.code,
             aliases: lookup.aliases,
             extra_data: lookup.extra_data,
         });
-        lookupCache.set(lookup.field_key, existing);
+        catalogCache.set(lookup.field_key, existing);
     }
     
-    console.log(`[LookupNormalizer] Prefetched ${lookups.length} lookups for ${lookupTypes.length} types`);
+    console.log(`[CatalogReconciler] Prefetched ${lookups.length} entries for ${catalogKeys.length} catalog keys`);
 }
 
 /**
- * Clear the lookup cache (call after processing is complete)
+ * Clear the catalog cache (call after processing is complete)
  */
-export function clearLookupCache(): void {
-    lookupCache.clear();
+export function clearCatalogCache(): void {
+    catalogCache.clear();
 }
 
 /**
- * Get the current lookup cache
+ * Get the current catalog cache
  * Useful for passing to other services (like template engine) to avoid re-fetching
  */
-export function getLookupCache(): Map<string, LookupEntry[]> {
-    return lookupCache;
+export function getCatalogCache(): Map<string, CatalogEntry[]> {
+    return catalogCache;
 }
 
 /**
- * Get lookups for a type, using cache if available, otherwise fetch
+ * Get catalog entries for a key, using cache if available, otherwise fetch
  */
-async function getLookupsForType(lookupType: string): Promise<LookupEntry[]> {
+async function getCatalogEntriesForKey(catalogKey: string): Promise<CatalogEntry[]> {
     // Check cache first
-    if (lookupCache.has(lookupType)) {
-        return lookupCache.get(lookupType)!;
+    if (catalogCache.has(catalogKey)) {
+        return catalogCache.get(catalogKey)!;
     }
     
     // Fallback to database query if not cached
@@ -151,9 +185,9 @@ async function getLookupsForType(lookupType: string): Promise<LookupEntry[]> {
     const { data: lookups } = await supabase
         .from('code_lookups')
         .select('name, code, aliases, extra_data')
-        .eq('field_key', lookupType);
+        .eq('field_key', catalogKey);
     
-    const entries: LookupEntry[] = (lookups || []).map(l => ({
+    const entries: CatalogEntry[] = (lookups || []).map(l => ({
         name: l.name,
         code: l.code,
         aliases: l.aliases,
@@ -161,61 +195,66 @@ async function getLookupsForType(lookupType: string): Promise<LookupEntry[]> {
     }));
     
     // Cache for future lookups
-    lookupCache.set(lookupType, entries);
+    catalogCache.set(catalogKey, entries);
     
     return entries;
 }
 
-// ============ END LOOKUP CACHE ============
+// ============ END CATALOG CACHE ============
 
 /**
- * Normalize a raw value using a lookup type with full metadata
+ * Reconcile a value against catalog entries with full metadata
  * Returns detailed information about the match for debugging/testing
+ * 
+ * This is the primary function for post-extraction reconciliation.
+ * The AI should have already resolved synonyms using the Catalog Match Guide,
+ * so this function primarily performs exact-match lookups to retrieve
+ * the .code and extra_data for the template engine.
  */
-export async function normalizeWithDetails(
+export async function reconcileMetadata(
     rawValue: string,
-    lookupType: string,
+    catalogKey: string,
     useFuzzy: boolean = true
-): Promise<NormalizationResult> {
-    if (!rawValue || !lookupType) {
+): Promise<ReconciliationResult> {
+    if (!rawValue || !catalogKey) {
         return { normalized: rawValue, code: '', matchType: 'none' };
     }
 
     const normalized = rawValue.toLowerCase().trim();
 
-    // Get lookups from cache or database
-    const lookups = await getLookupsForType(lookupType);
+    // Get catalog entries from cache or database
+    const entries = await getCatalogEntriesForKey(catalogKey);
 
-    if (lookups.length === 0) {
+    if (entries.length === 0) {
         return { normalized: rawValue, code: '', matchType: 'none' };
     }
 
     // Step 1: Try exact match on name
-    for (const lookup of lookups) {
-        if (lookup.name.toLowerCase().trim() === normalized) {
+    for (const entry of entries) {
+        if (entry.name.toLowerCase().trim() === normalized) {
             return {
-                normalized: lookup.name,
-                code: lookup.code,
+                normalized: entry.name,
+                code: entry.code,
                 matchType: 'exact',
-                matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
-                extra_data: lookup.extra_data || {}
+                matchedEntry: { name: entry.name, aliases: entry.aliases, extra_data: entry.extra_data },
+                extra_data: entry.extra_data || {}
             };
         }
     }
 
     // Step 2: Try exact match on aliases
-    for (const lookup of lookups) {
-        if (lookup.aliases && Array.isArray(lookup.aliases)) {
-            const matchedAlias = lookup.aliases.find(
+    for (const entry of entries) {
+        if (entry.aliases && Array.isArray(entry.aliases)) {
+            const matchedAlias = entry.aliases.find(
                 (alias: string) => alias.toLowerCase().trim() === normalized
             );
             if (matchedAlias) {
                 return {
-                    normalized: lookup.name,
-                    code: lookup.code,
+                    normalized: entry.name,
+                    code: entry.code,
                     matchType: 'alias',
-                    matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
-                    extra_data: lookup.extra_data || {}
+                    matchedEntry: { name: entry.name, aliases: entry.aliases, extra_data: entry.extra_data },
+                    extra_data: entry.extra_data || {}
                 };
             }
         }
@@ -224,22 +263,22 @@ export async function normalizeWithDetails(
     // Step 3: Try fuzzy matching if enabled
     if (useFuzzy) {
         const threshold = getFuzzyThreshold(normalized.length);
-        let bestMatch: { lookup: typeof lookups[0]; distance: number; matchedOn: string } | null = null;
+        let bestMatch: { entry: typeof entries[0]; distance: number; matchedOn: string } | null = null;
 
-        for (const lookup of lookups) {
+        for (const entry of entries) {
             // Check fuzzy match on name
-            const nameDistance = levenshteinDistance(normalized, lookup.name.toLowerCase().trim());
+            const nameDistance = levenshteinDistance(normalized, entry.name.toLowerCase().trim());
             if (nameDistance <= threshold && (!bestMatch || nameDistance < bestMatch.distance)) {
-                bestMatch = { lookup, distance: nameDistance, matchedOn: lookup.name };
+                bestMatch = { entry, distance: nameDistance, matchedOn: entry.name };
             }
 
             // Check fuzzy match on aliases
-            if (lookup.aliases && Array.isArray(lookup.aliases)) {
-                for (const alias of lookup.aliases) {
+            if (entry.aliases && Array.isArray(entry.aliases)) {
+                for (const alias of entry.aliases) {
                     const aliasNormalized = alias.toLowerCase().trim();
                     const aliasDistance = levenshteinDistance(normalized, aliasNormalized);
                     if (aliasDistance <= threshold && (!bestMatch || aliasDistance < bestMatch.distance)) {
-                        bestMatch = { lookup, distance: aliasDistance, matchedOn: alias };
+                        bestMatch = { entry, distance: aliasDistance, matchedOn: alias };
                     }
                 }
             }
@@ -247,11 +286,11 @@ export async function normalizeWithDetails(
 
         if (bestMatch) {
             return {
-                normalized: bestMatch.lookup.name,
-                code: bestMatch.lookup.code,
+                normalized: bestMatch.entry.name,
+                code: bestMatch.entry.code,
                 matchType: 'fuzzy',
-                matchedEntry: { name: bestMatch.lookup.name, aliases: bestMatch.lookup.aliases, extra_data: bestMatch.lookup.extra_data },
-                extra_data: bestMatch.lookup.extra_data || {},
+                matchedEntry: { name: bestMatch.entry.name, aliases: bestMatch.entry.aliases, extra_data: bestMatch.entry.extra_data },
+                extra_data: bestMatch.entry.extra_data || {},
                 distance: bestMatch.distance
             };
         }
@@ -264,32 +303,32 @@ export async function normalizeWithDetails(
             const partNormalized = part.toLowerCase().trim();
 
             // Try exact match on part
-            for (const lookup of lookups) {
-                if (lookup.name.toLowerCase().trim() === partNormalized) {
+            for (const entry of entries) {
+                if (entry.name.toLowerCase().trim() === partNormalized) {
                     return {
-                        normalized: lookup.name,
-                        code: lookup.code,
+                        normalized: entry.name,
+                        code: entry.code,
                         matchType: 'compound',
-                        matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
-                        extra_data: lookup.extra_data || {},
+                        matchedEntry: { name: entry.name, aliases: entry.aliases, extra_data: entry.extra_data },
+                        extra_data: entry.extra_data || {},
                         originalPart: part
                     };
                 }
             }
 
             // Try alias match on part
-            for (const lookup of lookups) {
-                if (lookup.aliases && Array.isArray(lookup.aliases)) {
-                    const matchedAlias = lookup.aliases.find(
+            for (const entry of entries) {
+                if (entry.aliases && Array.isArray(entry.aliases)) {
+                    const matchedAlias = entry.aliases.find(
                         (alias: string) => alias.toLowerCase().trim() === partNormalized
                     );
                     if (matchedAlias) {
                         return {
-                            normalized: lookup.name,
-                            code: lookup.code,
+                            normalized: entry.name,
+                            code: entry.code,
                             matchType: 'compound',
-                            matchedEntry: { name: lookup.name, aliases: lookup.aliases, extra_data: lookup.extra_data },
-                            extra_data: lookup.extra_data || {},
+                            matchedEntry: { name: entry.name, aliases: entry.aliases, extra_data: entry.extra_data },
+                            extra_data: entry.extra_data || {},
                             originalPart: part
                         };
                     }
@@ -303,34 +342,33 @@ export async function normalizeWithDetails(
 }
 
 /**
- * Normalize a raw value using a lookup type's aliases
+ * Match a raw value against catalog entries
  * Returns the canonical name if found, otherwise returns the original value
  * 
  * This is the simple interface for use in the processing pipeline
  */
-export async function normalizeUsingLookup(
+export async function matchAgainstCatalog(
     rawValue: string,
-    lookupType: string,
+    catalogKey: string,
     useFuzzy: boolean = true
 ): Promise<string> {
-    const result = await normalizeWithDetails(rawValue, lookupType, useFuzzy);
+    const result = await reconcileMetadata(rawValue, catalogKey, useFuzzy);
     return result.normalized;
 }
 
 /**
- * Batch normalize multiple values using a lookup type
+ * Batch match multiple values against a catalog
  */
-export async function normalizeMultipleUsingLookup(
+export async function matchMultipleAgainstCatalog(
     values: string[],
-    lookupType: string
+    catalogKey: string
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
 
     for (const value of values) {
-        const normalized = await normalizeUsingLookup(value, lookupType);
-        results.set(value, normalized);
+        const matched = await matchAgainstCatalog(value, catalogKey);
+        results.set(value, matched);
     }
 
     return results;
 }
-

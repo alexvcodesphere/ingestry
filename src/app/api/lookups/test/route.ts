@@ -1,30 +1,33 @@
 /**
- * API endpoint to test normalization
- * Returns detailed information about how a value would be normalized
+ * API endpoint to test catalog matching
+ * Returns detailed information about how a value would be matched against a catalog
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { normalizeWithDetails } from '@/lib/services/lookup-normalizer';
+import { reconcileMetadata } from '@/lib/services/catalog-reconciler';
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { value, lookupType } = body;
+        const { value, catalogKey } = body;
 
-        if (!value || !lookupType) {
+        // Support legacy parameter name
+        const key = catalogKey || body.lookupType;
+
+        if (!value || !key) {
             return NextResponse.json(
-                { error: 'Both value and lookupType are required' },
+                { error: 'Both value and catalogKey are required' },
                 { status: 400 }
             );
         }
 
-        const result = await normalizeWithDetails(value, lookupType, true);
+        const result = await reconcileMetadata(value, key, true);
 
         return NextResponse.json(result);
     } catch (error) {
-        console.error('Normalization test error:', error);
+        console.error('Catalog matching test error:', error);
         return NextResponse.json(
-            { error: 'Failed to test normalization' },
+            { error: 'Failed to test catalog matching' },
             { status: 500 }
         );
     }

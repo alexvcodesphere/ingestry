@@ -147,6 +147,7 @@ export interface FieldDefinition {
     instructions?: string;
     enumValues?: string[];
     defaultValue?: string;
+    catalog_key?: string;  // catalog key for matching during extraction
 }
 
 export interface ExtractionProfile {

@@ -32,7 +32,7 @@ interface FieldConfig {
     key: string;
     label: string;
     required?: boolean;
-    normalize_with?: string; // lookup field_key for normalization
+    catalog_key?: string; // catalog field_key for matching
     use_template?: boolean;  // if true, value is computed from template
     template?: string;       // template string e.g. "{brand} - {name}"
     fallback?: string;       // default value if extraction returns empty
@@ -126,10 +126,10 @@ export default function ProcessingProfilesPage() {
         setIsEditorOpen(true);
     };
 
-    const updateFieldNormalization = (key: string, lookupSlug: string | null) => {
+    const updateCatalogMatching = (key: string, lookupSlug: string | null) => {
         setFormFields(formFields.map(f =>
             f.key === key
-                ? { ...f, normalize_with: lookupSlug || undefined }
+                ? { ...f, catalog_key: lookupSlug || undefined }
                 : f
         ));
     };
@@ -384,10 +384,10 @@ export default function ProcessingProfilesPage() {
                                                 </div>
                                                 {!field.use_template && (
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Normalize:</span>
+                                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Catalog:</span>
                                                         <Select
-                                                            value={field.normalize_with || "none"}
-                                                            onValueChange={(v) => updateFieldNormalization(field.key, v === "none" ? null : v)}
+                                                            value={field.catalog_key || "none"}
+                                                            onValueChange={(v) => updateCatalogMatching(field.key, v === "none" ? null : v)}
                                                         >
                                                             <SelectTrigger className="w-28 h-8">
                                                                 <SelectValue placeholder="None" />

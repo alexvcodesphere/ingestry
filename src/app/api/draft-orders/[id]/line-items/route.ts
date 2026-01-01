@@ -13,7 +13,7 @@ import {
     approveAllLineItems,
 } from '@/lib/services/draft-order.service';
 import { evaluateTemplate, type TemplateContext } from '@/lib/services/template-engine';
-import { prefetchLookups, clearLookupCache, getLookupCache } from '@/lib/services/lookup-normalizer';
+import { prefetchCatalog, clearCatalogCache, getCatalogCache } from '@/lib/services/catalog-reconciler';
 import type { NormalizedProduct } from '@/types';
 
 interface RouteParams {
@@ -207,17 +207,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 );
             }
 
-            // --- BATCH PERFORMANCE FIX: PREFETCH LOOKUPS ---
-            const lookupTypes = profile.fields
-                .filter((f: { normalize_with?: string }) => f.normalize_with)
-                .map((f: { normalize_with: string }) => f.normalize_with);
+            // --- BATCH PERFORMANCE FIX: PREFETCH CATALOG ---
+            const catalogKeys = profile.fields
+                .filter((f: { catalog_key?: string }) => f.catalog_key)
+                .map((f: { catalog_key: string }) => f.catalog_key);
             
-            if (lookupTypes.length > 0) {
-                await prefetchLookups(lookupTypes);
+            if (catalogKeys.length > 0) {
+                await prefetchCatalog(catalogKeys);
             }
 
             // Build lookup maps for template engine (once)
-            const cache = getLookupCache();
+            const cache = getCatalogCache();
             const codeLookups = new Map();
             const extraDataLookups = new Map();
             for (const [type, entries] of cache.entries()) {
@@ -239,11 +239,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 extraDataLookups.set(type, extraMap);
             }
 
-            // Build lookup type mapping from profile
+            // Build catalog key mapping from profile
             const lookupTypeMapping: Record<string, string> = {};
             for (const field of profile.fields || []) {
-                if (field.normalize_with) {
-                    lookupTypeMapping[field.key] = field.normalize_with;
+                if (field.catalog_key) {
+                    lookupTypeMapping[field.key] = field.catalog_key;
                 }
             }
 
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
-            clearLookupCache();
+            clearCatalogCache();
 
             return NextResponse.json({
                 success: true,

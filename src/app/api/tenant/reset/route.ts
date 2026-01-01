@@ -52,6 +52,30 @@ export async function DELETE() {
             throw jobsError;
         }
 
+        // Clear Storage Buckets (pdfs, catalogues)
+        // We attempt this but don't fail the whole request if it errors (e.g. buckets don't exist)
+        try {
+            const buckets = ['pdfs', 'catalogues'];
+            for (const bucket of buckets) {
+                const { data: files, error: listError } = await supabase.storage.from(bucket).list();
+                if (listError) {
+                    console.warn(`Failed to list files in bucket ${bucket}:`, listError);
+                    continue;
+                }
+
+                if (files && files.length > 0) {
+                    const paths = files.map(f => f.name);
+                    const { error: removeError } = await supabase.storage.from(bucket).remove(paths);
+                    if (removeError) {
+                        console.warn(`Failed to remove files from bucket ${bucket}:`, removeError);
+                    }
+                }
+            }
+        } catch (storageError) {
+            console.error('Storage cleanup error:', storageError);
+            // Continue - database is already cleared
+        }
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Reset tenant data error:', error);

@@ -12,7 +12,7 @@ interface FieldConfig {
     key: string;
     label: string;
     required?: boolean;
-    normalize_with?: string;
+    catalog_key?: string;     // catalog key for matching during extraction
     use_template?: boolean;   // if true, value is computed from template
     template?: string;        // template string e.g. "{brand} - {name}"
     fallback?: string;        // default value if extraction returns empty
@@ -79,11 +79,19 @@ export interface PromptOptions {
 
 /**
  * Build the system prompt from profile fields
+ * @param fields - Field configurations from processing profile
+ * @param options - Prompt options (e.g., enableReasoning)
+ * @param catalogGuide - Optional catalog guide for semantic matching
  */
-export function buildSystemPrompt(fields: FieldConfig[], options?: PromptOptions): string {
+export function buildSystemPrompt(
+    fields: FieldConfig[], 
+    options?: PromptOptions,
+    catalogGuide?: string
+): string {
     const fieldDescriptions = fields.map(f => {
         let desc = `- ${f.key}: ${f.label}`;
         if (f.required) desc += ' [REQUIRED]';
+        if (f.catalog_key) desc += ` [MATCH WITH CATALOG: ${f.catalog_key}]`;
         return desc;
     }).join('\n');
 
@@ -135,6 +143,18 @@ Example:
 }`;
     }
 
+    // Inject catalog matching instructions if guide provided
+    if (catalogGuide) {
+        prompt += `
+
+## Catalog Match Guide
+You are a catalog specialist. For fields marked with [MATCH WITH CATALOG], reconcile the document text with the valid options listed below. If a value is a synonym, abbreviation, or variant spelling (e.g., "Mdngt" → "Navy Blue", "BLK" → "Black"), output the EXACT canonical name from this list.
+
+${catalogGuide}
+
+IMPORTANT: Only use values from this catalog for matched fields. Do not invent or modify catalog names.`;
+    }
+
     return prompt;
 }
 
@@ -159,10 +179,14 @@ function buildJsonSchema(fields: FieldConfig[], includeNeedsChecking?: boolean):
 
 /**
  * Get the prompt for a profile (fetches from DB if needed)
+ * @param profileId - Optional profile ID to fetch
+ * @param options - Prompt options
+ * @param catalogGuide - Optional catalog guide for semantic matching
  */
 export async function getPromptForProfile(
     profileId?: string,
-    options?: PromptOptions
+    options?: PromptOptions,
+    catalogGuide?: string
 ): Promise<{ prompt: string; profile: ProcessingProfile | null }> {
     const profile = await getProcessingProfile(profileId);
 
@@ -171,7 +195,7 @@ export async function getPromptForProfile(
         return { prompt: getDefaultPrompt(options), profile: null };
     }
 
-    return { prompt: buildSystemPrompt(profile.fields, options), profile };
+    return { prompt: buildSystemPrompt(profile.fields, options, catalogGuide), profile };
 }
 
 /**
