@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DraftOrderGrid } from "@/components/orders/flow/DraftOrderGrid";
+import { IngestrySpark } from "@/components/orders/flow/IngestrySpark";
 import { ExportDialog } from "@/components/orders/ExportDialog";
 import type { DraftOrder, NormalizedProduct, DraftOrderStatus, DraftLineItem } from "@/types";
 import type { DataRecord } from "@/lib/export";
@@ -52,6 +53,11 @@ export default function OrderDetailPage() {
     const [error, setError] = useState<string | null>(null);
     const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
     const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+    
+    // Spark sidebar state
+    const [sparkSelectedIds, setSparkSelectedIds] = useState<string[]>([]);
+    const [sparkProcessing, setSparkProcessing] = useState(false);
+    const [sparkOpen, setSparkOpen] = useState(false);
 
     // Fetch order data
     const fetchOrder = useCallback(async () => {
@@ -284,40 +290,58 @@ export default function OrderDetailPage() {
                 </div>
             )}
 
-            {/* Validation Grid */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between border-b">
-                    <CardTitle className="text-base font-medium">Product Validation</CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                    {order.line_items && order.line_items.length > 0 ? (
-                        <DraftOrderGrid
-                            lineItems={order.line_items}
-                            orderId={orderId}
-                            onUpdateItem={handleUpdateItem}
-                            onApproveItems={handleApproveItems}
-                            onApproveAll={handleApproveAll}
-                            onRegenerateTemplates={handleRegenerateTemplates}
-                            onBulkUpdate={handleBulkUpdate}
-                            onRefreshData={fetchOrder}
-                            isSubmitting={isSubmitting}
-                            fieldLabels={
-                                ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
-                                    .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
-                            }
-                            templatedFields={
-                                ((order.metadata as { profile_fields?: Array<{ key: string; use_template?: boolean }> })?.profile_fields || [])
-                                    .filter(f => f.use_template)
-                                    .map(f => f.key)
-                            }
-                        />
-                    ) : (
-                        <p className="text-center py-8 text-muted-foreground">
-                            No items in this order
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
+            {/* Validation Grid + Spark Sidebar */}
+            <div className="flex gap-4 items-stretch">
+                <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between border-b">
+                        <CardTitle className="text-base font-medium">Product Validation</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 flex-1 overflow-auto">
+                        {order.line_items && order.line_items.length > 0 ? (
+                            <DraftOrderGrid
+                                lineItems={order.line_items}
+                                orderId={orderId}
+                                onUpdateItem={handleUpdateItem}
+                                onApproveItems={handleApproveItems}
+                                onApproveAll={handleApproveAll}
+                                onRegenerateTemplates={handleRegenerateTemplates}
+                                onBulkUpdate={handleBulkUpdate}
+                                onRefreshData={fetchOrder}
+                                isSubmitting={isSubmitting}
+                                onSelectionChange={setSparkSelectedIds}
+                                onSparkToggle={() => setSparkOpen(prev => !prev)}
+                                fieldLabels={
+                                    ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
+                                        .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
+                                }
+                                templatedFields={
+                                    ((order.metadata as { profile_fields?: Array<{ key: string; use_template?: boolean }> })?.profile_fields || [])
+                                        .filter(f => f.use_template)
+                                        .map(f => f.key)
+                                }
+                            />
+                        ) : (
+                            <p className="text-center py-8 text-muted-foreground">
+                                No items in this order
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Spark Sidebar */}
+                <IngestrySpark
+                    orderId={orderId}
+                    selectedIds={sparkSelectedIds}
+                    isOpen={sparkOpen}
+                    onOpenChange={setSparkOpen}
+                    onSparkComplete={(result) => {
+                        if (result.patchedIds.length > 0 || result.triggerRegeneration) {
+                            fetchOrder();
+                        }
+                    }}
+                    onProcessingChange={setSparkProcessing}
+                />
+            </div>
 
             {/* Order Metadata */}
             <Card>

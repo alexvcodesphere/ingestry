@@ -20,7 +20,7 @@ export interface SparkPatch {
     previous_data: Record<string, unknown>;
 }
 
-export type SparkStatus = "success" | "ambiguous" | "no_changes";
+export type SparkStatus = "success" | "ambiguous" | "no_changes" | "question";
 
 /** Response from Spark */
 export interface SparkResult {
@@ -29,12 +29,14 @@ export interface SparkResult {
     trigger_regeneration: boolean;
     summary: string;
     clarification_needed?: string;
+    answer?: string;  // For question mode responses
 }
 
 export interface SparkOptions {
     model?: SparkModel;
     catalogGuide?: string;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+    allowQuestions?: boolean;  // Opt-in for question answering mode
 }
 
 /** Result from intent parsing phase */
@@ -43,6 +45,7 @@ interface IntentResult {
     contextFields: string[];  // Fields needed for filtering (e.g., name when "items with name X")
     allRows: boolean;
     isAmbiguous: boolean;
+    isQuestion: boolean;  // True if user is asking about data, not modifying
     clarificationNeeded?: string;
 }
 
@@ -67,17 +70,19 @@ Instruction: "${instruction}"
 
 Return JSON:
 {
-  "targetFields": ["field_key"],     // Fields that will be MODIFIED
-  "contextFields": ["field_key"],    // Fields needed for FILTERING (e.g., "items with name X" needs name field)
-  "allRows": true,                   // false if instruction targets specific items
+  "targetFields": ["field_key"],     // Fields that will be MODIFIED (empty if question)
+  "contextFields": ["field_key"],    // Fields needed for FILTERING or ANSWERING
+  "allRows": true,                   // false if targets specific items
   "isAmbiguous": false,
+  "isQuestion": false,               // true if asking ABOUT data (count, list, check)
   "clarificationNeeded": null
 }
 
 Examples:
-- "Set all years to 2025" → targetFields: ["year"], contextFields: [], allRows: true
-- "Change year to 2025 for items named gloves" → targetFields: ["year"], contextFields: ["product_name"], allRows: false
-- "Fix the names" → targetFields: ["product_name"], contextFields: [], allRows: true`;
+- "Set all years to 2025" → targetFields: ["year"], contextFields: [], isQuestion: false
+- "How many items have year 2023?" → targetFields: [], contextFields: ["year"], isQuestion: true
+- "List all the brands" → targetFields: [], contextFields: ["brand"], isQuestion: true
+- "Fix the names" → targetFields: ["product_name"], contextFields: [], isQuestion: false`;
 
     const startTime = Date.now();
     
@@ -112,23 +117,24 @@ Examples:
         const targetFields = (parsed.targetFields || []).filter((f: string) => validFields.has(f));
         const contextFields = (parsed.contextFields || []).filter((f: string) => validFields.has(f));
 
-        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}`);
+        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}, Question: ${parsed.isQuestion || false}`);
 
         return {
             targetFields,
             contextFields,
             allRows: parsed.allRows !== false,
             isAmbiguous: parsed.isAmbiguous === true,
+            isQuestion: parsed.isQuestion === true,
             clarificationNeeded: parsed.clarificationNeeded,
         };
     } catch (e) {
         console.error("[Spark Intent] Parse failed, using all fields:", e);
-        // Fallback: use all fields
         return {
             targetFields: Object.keys(fieldSchema),
             contextFields: [],
             allRows: true,
             isAmbiguous: false,
+            isQuestion: false,
         };
     }
 }
@@ -200,17 +206,109 @@ export async function sparkAudit(
     const totalStartTime = Date.now();
 
     // Phase 1: Parse intent to get target fields (with conversation history for context)
-    console.log(`[Spark] Phase 1: Parsing intent...`);
+    console.log(`[Spark] Phase 1: Parsing intent for: "${instruction.substring(0, 50)}..."`);
     const intent = await parseIntent(instruction, fieldSchema, ai, options.conversationHistory);
+    console.log(`[Spark] Intent result: isQuestion=${intent.isQuestion}, targetFields=[${intent.targetFields.join(',')}], contextFields=[${intent.contextFields.join(',')}]`);
 
-    // Handle ambiguous intent early
-    if (intent.isAmbiguous && intent.targetFields.length === 0) {
+    // Handle ambiguous intent early (but not if allowQuestions is on - let it try as a question)
+    if (intent.isAmbiguous && intent.targetFields.length === 0 && !intent.isQuestion && !options.allowQuestions) {
         return {
             status: "ambiguous",
             patches: [],
             trigger_regeneration: false,
             summary: "Could not determine which fields to modify",
             clarification_needed: intent.clarificationNeeded || "Which field would you like to change?",
+        };
+    }
+
+    // ROBUST QUESTION DETECTION:
+    // If allowQuestions is true AND no target fields detected, treat as a question
+    // This handles cases where the LLM fails to set isQuestion=true
+    const isEffectivelyQuestion = intent.isQuestion || 
+        (options.allowQuestions && intent.targetFields.length === 0);
+    
+    if (isEffectivelyQuestion) {
+        console.log(`[Spark] Treating as question (explicit: ${intent.isQuestion}, fallback: ${options.allowQuestions && intent.targetFields.length === 0})`);
+    }
+
+    // Handle question detection
+    if (isEffectivelyQuestion) {
+        if (!options.allowQuestions) {
+            // Question mode not enabled - prompt user to opt-in
+            return {
+                status: "question",
+                patches: [],
+                trigger_regeneration: false,
+                summary: "This looks like a question about your data.",
+                clarification_needed: "Enable question mode to analyze your data and answer questions.",
+            };
+        }
+
+        // Question mode enabled - answer the question with ALL data
+        // Don't filter fields for questions - we need full context to answer accurately
+        console.log(`[Spark] Question mode: including all fields for accurate answers`);
+        
+        // For questions, use ALL fields - filtering causes the model to miss relevant data
+        const fieldsToInclude = Object.keys(fieldSchema);
+
+        const filteredItems = lineItems.map(item => {
+            const filteredData: Record<string, unknown> = {};
+            for (const key of fieldsToInclude) {
+                if (key in item.data) {
+                    filteredData[key] = item.data[key];
+                }
+            }
+            return { id: item.id, data: filteredData };
+        });
+
+        // Build conversation history as readable text
+        let conversationContext = "";
+        if (options.conversationHistory && options.conversationHistory.length > 0) {
+            conversationContext = "\n## Previous Conversation\n";
+            for (const msg of options.conversationHistory) {
+                const label = msg.role === "user" ? "User" : "Assistant";
+                conversationContext += `${label}: ${msg.content}\n`;
+            }
+            console.log(`[Spark Question] Including ${options.conversationHistory.length} previous turns`);
+        }
+
+        // Build a more structured prompt for accurate answers
+        const questionSystemPrompt = `You are a data analyst answering questions about a dataset.
+
+RULES:
+1. Count carefully - list items if needed to verify
+2. For unique values, extract and list all distinct values
+3. Answer the current question accurately based on the data provided
+4. If asked about previous questions, refer to the conversation history above the data`;
+
+        const questionUserPrompt = `${conversationContext}
+## Dataset (${filteredItems.length} records)
+Available fields: ${fieldsToInclude.join(', ')}
+
+${JSON.stringify(filteredItems, null, 0)}
+
+## Current Question
+${instruction}
+
+Provide an accurate answer based on the data above.`;
+
+        const response = await ai.models.generateContent({
+            model: options.model || INTENT_MODEL,
+            contents: [{ role: "user", parts: [{ text: questionUserPrompt }] }],
+            config: {
+                systemInstruction: questionSystemPrompt,
+            },
+        });
+
+        const answer = (response.text || "").trim();
+        console.log(`[Spark] Question answered in ${Date.now() - totalStartTime}ms`);
+
+        return {
+            status: "question",
+            patches: [],
+            trigger_regeneration: false,
+            summary: "Question answered",
+            answer,
         };
     }
 

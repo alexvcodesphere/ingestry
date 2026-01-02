@@ -47,10 +47,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
 
         const body = await request.json();
-        const { instruction, lineItemIds, conversationHistory } = body as {
+        const { instruction, lineItemIds, conversationHistory, allowQuestions } = body as {
             instruction: string;
             lineItemIds?: string[];
             conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+            allowQuestions?: boolean;
         };
 
         if (!instruction?.trim()) {
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             instruction,
             auditData,
             fieldSchema,
-            { catalogGuide, model: sparkModel, conversationHistory }
+            { catalogGuide, model: sparkModel, conversationHistory, allowQuestions }
         );
         log(`Spark complete: ${result.status}, ${result.patches.length} patches`);
 
@@ -151,6 +152,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                     status: "ambiguous",
                     clarification_needed: result.clarification_needed,
                     summary: result.summary,
+                    duration: Date.now() - startTime,
+                },
+            });
+        }
+        // Handle question response
+        if (result.status === "question") {
+            log(`Question handled: ${result.answer ? 'answered' : 'opt-in required'}`);
+            return NextResponse.json({
+                success: true,
+                data: {
+                    status: "question",
+                    clarification_needed: result.clarification_needed,
+                    summary: result.summary,
+                    answer: result.answer,
+                    recordsAnalyzed: items?.length || 0,
+                    fieldsIncluded: Object.keys(fieldSchema).join(', '),
                     duration: Date.now() - startTime,
                 },
             });
