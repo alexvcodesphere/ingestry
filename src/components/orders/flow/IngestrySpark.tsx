@@ -8,6 +8,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,16 +65,6 @@ function LoadingIcon() {
     );
 }
 
-// Animated sparkle effect for the header
-function AnimatedSparkle({ className }: { className?: string }) {
-    return (
-        <div className={`relative ${className}`}>
-            <Sparkles className="h-5 w-5 text-primary animate-pulse" />
-            <div className="absolute inset-0 bg-primary/20 blur-md rounded-full animate-ping" style={{ animationDuration: '2s' }} />
-        </div>
-    );
-}
-
 function SparkMessage({ 
     message, 
     onUndo, 
@@ -99,12 +90,12 @@ function SparkMessage({
             animate={{ opacity: 1, y: 0 }}
             className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}
         >
-            <div className={`shrink-0 h-7 w-7 rounded-full flex items-center justify-center shadow-sm ${
-                isUser ? "bg-gradient-to-br from-primary/80 to-primary text-primary-foreground" :
-                isTool ? "bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/40 dark:to-amber-800/40 text-amber-600 dark:text-amber-400" :
-                isQuestionPrompt ? "bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/40 dark:to-blue-800/40 text-blue-600 dark:text-blue-400" :
-                isSystem ? "bg-muted text-muted-foreground" :
-                "bg-gradient-to-br from-primary/20 to-primary/30 text-primary"
+            <div className={`shrink-0 h-7 w-7 rounded-full flex items-center justify-center border ${
+                isUser ? "bg-primary text-primary-foreground border-primary" :
+                isTool ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800" :
+                isQuestionPrompt ? "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800" :
+                isSystem ? "bg-muted text-muted-foreground border-border" :
+                "bg-primary/10 text-primary border-primary/20"
             }`}>
                 {isUser ? <User className="h-3.5 w-3.5" /> :
                  isTool ? <Wrench className="h-3.5 w-3.5" /> :
@@ -113,20 +104,24 @@ function SparkMessage({
                  <Sparkles className="h-3.5 w-3.5" />}
             </div>
             
-            <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
-                isUser ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground" :
-                isTool ? "bg-gradient-to-br from-amber-50 to-amber-100/80 dark:from-amber-950/40 dark:to-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200/50 dark:border-amber-800/50" :
-                isQuestionPrompt ? "bg-gradient-to-br from-blue-50 to-blue-100/80 dark:from-blue-950/40 dark:to-blue-900/30 text-blue-800 dark:text-blue-200 border border-blue-200/50 dark:border-blue-800/50" :
-                isSystem ? "bg-muted/30 text-muted-foreground italic text-xs px-2 py-1.5 rounded-lg" :
-                "bg-gradient-to-br from-muted/50 to-muted/80 dark:from-muted/30 dark:to-muted/50"
+            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                isUser ? "bg-primary/10 text-foreground border border-primary/20" :
+                isTool ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800" :
+                isQuestionPrompt ? "bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800" :
+                isSystem ? "bg-muted/50 text-muted-foreground text-xs" :
+                "bg-muted"
             }`}>
                 {isThinking ? (
                     <div className="flex items-center gap-2">
                         <LoadingIcon />
                         <span className="text-muted-foreground">Thinking...</span>
                     </div>
-                ) : (
+                ) : isUser ? (
                     <p className="whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:my-2">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
                 )}
                 
                 {isQuestionPrompt && onEnableQuestions && (
@@ -396,15 +391,15 @@ export function IngestrySpark({
                     className="self-stretch max-h-[800px]"
                     style={{ overflow: 'clip' }}
                 >
-                    <Card className="w-[360px] h-full flex flex-col overflow-hidden">
-                        {/* Gradient header with animated sparkle */}
-                        <CardHeader className="py-3 px-4 border-b bg-gradient-to-r from-primary/5 via-transparent to-primary/5 flex flex-row items-center justify-between shrink-0">
-                            <CardTitle className="text-sm font-semibold flex items-center gap-2.5">
-                                <AnimatedSparkle />
-                                <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Spark</span>
+                    <Card className="w-[360px] h-full flex flex-col overflow-hidden border border-border rounded-2xl">
+                        {/* Clean header */}
+                        <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between shrink-0">
+                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                Spark
                                 {selectedIds.length > 0 && (
-                                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                                        {selectedIds.length} selected
+                                    <span className="text-xs text-muted-foreground font-normal">
+                                        ({selectedIds.length} selected)
                                     </span>
                                 )}
                             </CardTitle>
@@ -413,7 +408,7 @@ export function IngestrySpark({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 hover:bg-primary/10 hover:text-primary transition-colors"
+                                        className="h-7 w-7"
                                         onClick={handleNewConversation}
                                         title="New conversation"
                                     >
@@ -423,7 +418,7 @@ export function IngestrySpark({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                                    className="h-7 w-7"
                                     onClick={() => onOpenChange(false)}
                                     disabled={state === "processing"}
                                 >
@@ -437,27 +432,17 @@ export function IngestrySpark({
                             <div className={`flex-1 p-3 space-y-3 ${messages.length > 0 ? 'overflow-y-auto' : 'overflow-hidden'}`}>
                                 {messages.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-                                        {/* Animated gradient icon */}
-                                        <div className="relative mb-5">
-                                            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent flex items-center justify-center shadow-lg shadow-primary/10">
-                                                <Sparkles className="h-8 w-8 text-primary" />
-                                            </div>
-                                            <div className="absolute -inset-1 bg-gradient-to-br from-primary/20 to-transparent rounded-2xl blur-xl opacity-50 animate-pulse" />
+                                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                                            <Sparkles className="h-6 w-6 text-primary" />
                                         </div>
-                                        <h4 className="font-semibold text-base mb-1.5">Ask Spark</h4>
-                                        <p className="text-sm text-muted-foreground max-w-[220px] leading-relaxed">
-                                            Transform your data with natural language commands
+                                        <h4 className="font-medium text-sm mb-1">How can I help?</h4>
+                                        <p className="text-sm text-muted-foreground max-w-[200px]">
+                                            Transform, analyze, or fix your data
                                         </p>
-                                        <div className="mt-5 flex flex-wrap gap-2 justify-center max-w-[300px]">
-                                            <button className="text-xs bg-muted/80 hover:bg-primary/10 hover:text-primary px-3 py-1.5 rounded-full transition-colors cursor-pointer border border-transparent hover:border-primary/20">
-                                                &quot;Set all years to 2025&quot;
-                                            </button>
-                                            <button className="text-xs bg-muted/80 hover:bg-primary/10 hover:text-primary px-3 py-1.5 rounded-full transition-colors cursor-pointer border border-transparent hover:border-primary/20">
-                                                &quot;How many colors?&quot;
-                                            </button>
-                                            <button className="text-xs bg-muted/80 hover:bg-primary/10 hover:text-primary px-3 py-1.5 rounded-full transition-colors cursor-pointer border border-transparent hover:border-primary/20">
-                                                &quot;Fix missing SKUs&quot;
-                                            </button>
+                                        <div className="mt-4 flex flex-wrap gap-1.5 justify-center max-w-[280px]">
+                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;Set all years to 2025&quot;</span>
+                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;How many colors?&quot;</span>
+                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;Fix missing SKUs&quot;</span>
                                         </div>
                                     </div>
                                 ) : (
@@ -475,39 +460,34 @@ export function IngestrySpark({
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            {/* Input area with gradient background */}
-                            <div className="border-t bg-gradient-to-t from-muted/30 to-transparent p-3 shrink-0">
-                                <Textarea
-                                    ref={textareaRef}
-                                    placeholder="What would you like me to do?"
-                                    value={instruction}
-                                    onChange={(e) => setInstruction(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    disabled={state === "processing"}
-                                    className="min-h-[60px] max-h-[120px] resize-none text-sm bg-background/80 backdrop-blur-sm focus:ring-2 focus:ring-primary focus:ring-offset-0 focus:border-primary focus:shadow-[0_0_25px_-3px_oklch(0.61_0.11_222_/_0.6)] dark:focus:shadow-[0_0_25px_-3px_oklch(0.65_0.11_222_/_0.6)] transition-all duration-200"
-                                />
-                                <div className="flex items-center justify-between mt-2.5">
-                                    <span className="text-xs text-muted-foreground/70">Shift+Enter for new line</span>
+                            {/* Input area */}
+                            <div className="border-t p-3 shrink-0">
+                                <div className="relative">
+                                    <Textarea
+                                        ref={textareaRef}
+                                        placeholder="Ask anything..."
+                                        value={instruction}
+                                        onChange={(e) => setInstruction(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        disabled={state === "processing"}
+                                        className="min-h-[40px] max-h-[100px] resize-none text-sm pr-10 border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
+                                        rows={1}
+                                    />
                                     <Button
                                         size="sm"
                                         onClick={handleSubmit}
                                         disabled={!instruction.trim() || state === "processing"}
-                                        className="h-8 px-4 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200"
+                                        className="h-7 w-7 p-0 rounded-full absolute top-0 right-0"
                                     >
                                         {state === "processing" ? (
-                                            <>
-                                                <LoadingIcon />
-                                                <span className="ml-2">Thinking...</span>
-                                            </>
+                                            <LoadingIcon />
                                         ) : (
-                                            <>
-                                                <Send className="h-3.5 w-3.5 mr-1.5" />
-                                                Send
-                                            </>
+                                            <Send className="h-3.5 w-3.5" />
                                         )}
                                     </Button>
                                 </div>
                             </div>
+                            <p className="text-[10px] text-muted-foreground/50 text-center py-2 border-t">Spark can make mistakes. Verify important changes.</p>
                         </CardContent>
                     </Card>
                 </motion.div>
