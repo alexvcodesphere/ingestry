@@ -30,7 +30,7 @@ const statusConfig: Record<DraftOrderStatus, { label: string; className: string 
     },
     exporting: {
         label: "Exporting",
-        className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+        className: "bg-lime-100 text-lime-700 dark:bg-lime-900 dark:text-lime-300",
     },
     exported: {
         label: "Exported",

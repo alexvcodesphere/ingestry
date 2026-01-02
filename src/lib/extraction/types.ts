@@ -49,3 +49,26 @@ export const VISION_MODELS: Record<VisionModel, { provider: VisionProvider; labe
         description: "Highest accuracy for complex documents",
     },
 };
+
+export const DEFAULT_VISION_MODEL: VisionModel = "gemini-3-flash";
+
+// Spark models for conversational data auditing (text-only reasoning)
+// Using stable model identifiers from Gemini API
+export type SparkModel = "gemini-3-flash-preview" | "gemini-2.5-flash" | "gemini-2.0-flash";
+
+export const SPARK_MODELS: Record<SparkModel, { label: string; description: string }> = {
+    "gemini-3-flash-preview": {
+        label: "Gemini 3 Flash (Preview)",
+        description: "Latest model, Pro-level intelligence",
+    },
+    "gemini-2.5-flash": {
+        label: "Gemini 2.5 Flash",
+        description: "Fast and highly capable",
+    },
+    "gemini-2.0-flash": {
+        label: "Gemini 2.0 Flash",
+        description: "Fastest, good for simple tasks",
+    },
+};
+
+export const DEFAULT_SPARK_MODEL: SparkModel = "gemini-2.5-flash";

@@ -1,14 +1,15 @@
 /**
- * Vision Model Settings API
- * GET: Get current vision model setting
- * PUT: Update vision model setting
+ * AI Model Settings API
+ * GET: Get current AI model settings (vision + spark)
+ * PUT: Update AI model settings
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { VisionModel } from '@/lib/extraction';
+import { type VisionModel, type SparkModel, VISION_MODELS, SPARK_MODELS, DEFAULT_VISION_MODEL, DEFAULT_SPARK_MODEL } from '@/lib/extraction';
 
-const VALID_MODELS: VisionModel[] = ['gpt-4o', 'gemini-3-flash', 'gemini-3-pro'];
+const VALID_VISION_MODELS = Object.keys(VISION_MODELS) as VisionModel[];
+const VALID_SPARK_MODELS = Object.keys(SPARK_MODELS) as SparkModel[];
 
 /**
  * GET /api/settings/vision-model
@@ -38,13 +39,15 @@ export async function GET() {
             );
         }
 
-        const visionModel = tenant?.settings?.vision_model || 'gpt-4o';
+        const visionModel = tenant?.settings?.vision_model || DEFAULT_VISION_MODEL;
+        const sparkModel = tenant?.settings?.spark_model || DEFAULT_SPARK_MODEL;
         const aiReasoningEnabled = tenant?.settings?.ai_reasoning_enabled ?? true;
 
         return NextResponse.json({
             success: true,
             data: { 
                 vision_model: visionModel,
+                spark_model: sparkModel,
                 ai_reasoning_enabled: aiReasoningEnabled,
             },
         });
@@ -74,20 +77,28 @@ export async function PUT(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { vision_model, ai_reasoning_enabled } = body;
+        const { vision_model, spark_model, ai_reasoning_enabled } = body;
 
         // Validate vision_model if provided
-        if (vision_model !== undefined && !VALID_MODELS.includes(vision_model)) {
+        if (vision_model !== undefined && !VALID_VISION_MODELS.includes(vision_model)) {
             return NextResponse.json(
-                { success: false, error: `Invalid model. Must be one of: ${VALID_MODELS.join(', ')}` },
+                { success: false, error: `Invalid vision model. Must be one of: ${VALID_VISION_MODELS.join(', ')}` },
+                { status: 400 }
+            );
+        }
+
+        // Validate spark_model if provided
+        if (spark_model !== undefined && !VALID_SPARK_MODELS.includes(spark_model)) {
+            return NextResponse.json(
+                { success: false, error: `Invalid spark model. Must be one of: ${VALID_SPARK_MODELS.join(', ')}` },
                 { status: 400 }
             );
         }
 
         // At least one setting must be provided
-        if (vision_model === undefined && ai_reasoning_enabled === undefined) {
+        if (vision_model === undefined && spark_model === undefined && ai_reasoning_enabled === undefined) {
             return NextResponse.json(
-                { success: false, error: 'At least one setting (vision_model or ai_reasoning_enabled) must be provided' },
+                { success: false, error: 'At least one setting must be provided' },
                 { status: 400 }
             );
         }
@@ -111,6 +122,7 @@ export async function PUT(request: NextRequest) {
         const updatedSettings = {
             ...(tenant.settings || {}),
             ...(vision_model !== undefined && { vision_model }),
+            ...(spark_model !== undefined && { spark_model }),
             ...(ai_reasoning_enabled !== undefined && { ai_reasoning_enabled }),
         };
 
@@ -132,6 +144,7 @@ export async function PUT(request: NextRequest) {
             success: true,
             data: { 
                 vision_model: updatedSettings.vision_model,
+                spark_model: updatedSettings.spark_model,
                 ai_reasoning_enabled: updatedSettings.ai_reasoning_enabled ?? false,
             },
         });

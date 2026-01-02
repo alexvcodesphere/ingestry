@@ -45,6 +45,7 @@ import { EditableCell } from "./EditableCell";
 import { StatusBadge, ValidationErrors } from "./StatusBadge";
 import type { DraftLineItem, NormalizedProduct, LineItemStatus } from "@/types";
 import { FloatingActionBar, type QuickSetField } from "./FloatingActionBar";
+import { IngestrySpark, type SparkCompletionResult } from "./IngestrySpark";
 
 /** Type for AI uncertainty flags stored in _needs_checking */
 interface NeedsCheckingFlag {
@@ -54,11 +55,13 @@ interface NeedsCheckingFlag {
 
 interface DraftOrderGridProps {
     lineItems: DraftLineItem[];
+    orderId: string;
     onUpdateItem: (itemId: string, updates: Partial<NormalizedProduct>) => Promise<void>;
     onApproveItems: (itemIds: string[]) => Promise<void>;
     onApproveAll: () => Promise<void>;
     onRegenerateTemplates?: (itemIds: string[]) => Promise<void>;
     onBulkUpdate?: (itemIds: string[], updates: Partial<NormalizedProduct>) => Promise<void>;
+    onRefreshData?: () => Promise<void>;
     isSubmitting?: boolean;
     /** Field key to label mapping from processing profile */
     fieldLabels?: Record<string, string>;
@@ -80,11 +83,13 @@ function getFieldUncertainty(data: Record<string, unknown> | undefined, fieldKey
 
 export function DraftOrderGrid({
     lineItems,
+    orderId,
     onUpdateItem,
     onApproveItems,
     onApproveAll,
     onRegenerateTemplates,
     onBulkUpdate,
+    onRefreshData,
     isSubmitting = false,
     fieldLabels = {},
     templatedFields = [],
@@ -97,6 +102,54 @@ export function DraftOrderGrid({
     const [bulkEditData, setBulkEditData] = useState<Record<string, string | number>>({});
     const [isBulkSaving, setIsBulkSaving] = useState(false);
     const lastClickedRowIndex = useRef<number | null>(null);
+    
+    // Ingestry Spark: Track dirty cells, glowing rows, and processing state
+    const [dirtyCells, setDirtyCells] = useState<Map<string, Set<string>>>(new Map());
+    const [glowingRows, setGlowingRows] = useState<Set<string>>(new Set());
+    const [sparkProcessing, setSparkProcessing] = useState(false);
+
+    // Handle Spark completion with staggered glow animation
+    const handleSparkComplete = useCallback(async (result: SparkCompletionResult) => {
+        if (result.patchedIds.length === 0) {
+            // Just refresh data (e.g., after undo)
+            if (onRefreshData) await onRefreshData();
+            return;
+        }
+
+        // Mark patched cells as dirty
+        setDirtyCells(prev => {
+            const next = new Map(prev);
+            for (const id of result.patchedIds) {
+                const fieldSet = next.get(id) || new Set();
+                result.patchedFields.forEach(f => fieldSet.add(f));
+                next.set(id, fieldSet);
+            }
+            return next;
+        });
+
+        // Staggered glow animation
+        for (let i = 0; i < result.patchedIds.length; i++) {
+            const id = result.patchedIds[i];
+            setTimeout(() => {
+                setGlowingRows(prev => new Set(prev).add(id));
+                setTimeout(() => {
+                    setGlowingRows(prev => {
+                        const next = new Set(prev);
+                        next.delete(id);
+                        return next;
+                    });
+                }, 800);
+            }, i * 50); // 50ms stagger between rows
+        }
+
+        // Refresh data
+        if (onRefreshData) await onRefreshData();
+
+        // Trigger regeneration if needed
+        if (result.triggerRegeneration && onRegenerateTemplates && result.patchedIds.length > 0) {
+            await onRegenerateTemplates(result.patchedIds);
+        }
+    }, [onRefreshData, onRegenerateTemplates]);
 
     // Dynamically derive editable columns from the actual data
     const editableColumns = useMemo(() => {
@@ -433,6 +486,14 @@ export function DraftOrderGrid({
                             </Button>
                         </>
                     )}
+                    {/* Ingestry Spark - AI Auditor */}
+                    <IngestrySpark
+                        orderId={orderId}
+                        selectedIds={selectedIds}
+                        onSparkComplete={handleSparkComplete}
+                        onProcessingChange={setSparkProcessing}
+                        disabled={isSubmitting}
+                    />
                     <Button
                         variant="default"
                         size="sm"
@@ -444,7 +505,7 @@ export function DraftOrderGrid({
                 </div>
             </div>
 
-            <div className="rounded-md border overflow-hidden">
+            <div className={`rounded-md border overflow-hidden ${sparkProcessing ? 'shimmer' : ''}`}>
                 <Table containerClassName="max-h-[600px]">
                 <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

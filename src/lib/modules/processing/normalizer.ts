@@ -233,7 +233,7 @@ export { processCatalogMatchingBatch as normalizeProducts };
  * Parse a field value based on common field name patterns
  * This handles quantity/price parsing without hardcoding specific fields
  */
-function parseFieldValue(key: string, value: string): unknown {
+export function parseFieldValue(key: string, value: string): unknown {
     if (!value) return value;
 
     const keyLower = key.toLowerCase();

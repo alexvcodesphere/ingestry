@@ -439,7 +439,7 @@ export default function CodeLookupsPage() {
                                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${testResult.matchType === 'exact' ? 'bg-green-100 text-green-800' :
                                                 testResult.matchType === 'alias' ? 'bg-blue-100 text-blue-800' :
                                                     testResult.matchType === 'fuzzy' ? 'bg-yellow-100 text-yellow-800' :
-                                                        testResult.matchType === 'compound' ? 'bg-purple-100 text-purple-800' :
+                                                        testResult.matchType === 'compound' ? 'bg-lime-100 text-lime-800' :
                                                             'bg-gray-100 text-gray-600'
                                                 }`}>
                                                 {testResult.matchType === 'none' ? 'No match' : testResult.matchType}

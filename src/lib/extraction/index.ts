@@ -7,7 +7,19 @@ import { extractWithOpenAI } from './openai-client';
 import { extractWithGemini } from './gemini-client';
 import type { ExtractionResult, VisionModel, VISION_MODELS } from './types';
 
-export { type ExtractionResult, type ExtractedProduct, type ExtractedProductWithMeta, type NeedsCheckingFlag, type VisionModel, type VisionProvider, VISION_MODELS } from './types';
+export { 
+    type ExtractionResult, 
+    type ExtractedProduct, 
+    type ExtractedProductWithMeta, 
+    type NeedsCheckingFlag, 
+    type VisionModel, 
+    type VisionProvider, 
+    VISION_MODELS,
+    DEFAULT_VISION_MODEL,
+    type SparkModel,
+    SPARK_MODELS,
+    DEFAULT_SPARK_MODEL,
+} from './types';
 export { getPromptForProfile, type PromptOptions } from './prompt-builder';
 export type { ProcessingProfile } from './prompt-builder';
 

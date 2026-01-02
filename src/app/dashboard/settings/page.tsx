@@ -26,6 +26,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SPARK_MODELS, VISION_MODELS, type SparkModel, type VisionModel } from "@/lib/extraction/types";
 
 const configSections = [
     {
@@ -131,12 +132,6 @@ function VisionModelSelector() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const models = [
-        { value: "gpt-4o", label: "GPT-4o", provider: "OpenAI" },
-        { value: "gemini-3-flash", label: "Gemini 3 Flash", provider: "Google" },
-        { value: "gemini-3-pro", label: "Gemini 3 Pro", provider: "Google" },
-    ];
-
     useEffect(() => {
         fetch("/api/settings/vision-model")
             .then((res) => res.json())
@@ -179,9 +174,66 @@ function VisionModelSelector() {
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
-                {models.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                        {m.label} ({m.provider})
+                {(Object.keys(VISION_MODELS) as VisionModel[]).map((key) => (
+                    <SelectItem key={key} value={key}>
+                        {VISION_MODELS[key].label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+}
+
+function SparkModelSelector() {
+    const [model, setModel] = useState<string>("gemini-2.5-flash");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        fetch("/api/settings/vision-model")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success && data.data.spark_model) {
+                    setModel(data.data.spark_model);
+                }
+            })
+            .finally(() => setLoading(false));
+    }, []);
+
+    const handleChange = async (newModel: string) => {
+        setSaving(true);
+        try {
+            const res = await fetch("/api/settings/vision-model", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ spark_model: newModel }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setModel(newModel);
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return <span className="text-sm text-muted-foreground">Loading...</span>;
+    }
+
+    return (
+        <Select
+            value={model}
+            onValueChange={handleChange}
+            disabled={saving}
+        >
+            <SelectTrigger className="h-8 w-48">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                {(Object.keys(SPARK_MODELS) as SparkModel[]).map((key) => (
+                    <SelectItem key={key} value={key}>
+                        {SPARK_MODELS[key].label}
                     </SelectItem>
                 ))}
             </SelectContent>
@@ -375,6 +427,13 @@ export default function SettingsPage() {
                                 <p className="text-xs text-muted-foreground">Model used for PDF extraction</p>
                             </div>
                             <VisionModelSelector />
+                        </div>
+                        <div className="flex items-center justify-between px-6 py-4">
+                            <div>
+                                <p className="text-sm font-medium">Ingestry Spark Model</p>
+                                <p className="text-xs text-muted-foreground">Model for AI data auditing</p>
+                            </div>
+                            <SparkModelSelector />
                         </div>
                         <div className="flex items-center justify-between px-6 py-4">
                             <div>

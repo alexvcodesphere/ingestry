@@ -29,7 +29,7 @@ const statusConfig: Record<DraftOrderStatus, { label: string; className: string 
     },
     exporting: {
         label: "Exporting...",
-        className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+        className: "bg-lime-100 text-lime-700 dark:bg-lime-900 dark:text-lime-300",
     },
     exported: {
         label: "Exported",
@@ -293,11 +293,13 @@ export default function OrderDetailPage() {
                     {order.line_items && order.line_items.length > 0 ? (
                         <DraftOrderGrid
                             lineItems={order.line_items}
+                            orderId={orderId}
                             onUpdateItem={handleUpdateItem}
                             onApproveItems={handleApproveItems}
                             onApproveAll={handleApproveAll}
                             onRegenerateTemplates={handleRegenerateTemplates}
                             onBulkUpdate={handleBulkUpdate}
+                            onRefreshData={fetchOrder}
                             isSubmitting={isSubmitting}
                             fieldLabels={
                                 ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
