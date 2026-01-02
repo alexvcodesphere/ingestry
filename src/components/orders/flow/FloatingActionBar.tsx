@@ -15,7 +15,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { X, Check, RefreshCw, ChevronDown } from "lucide-react";
+import { X, Check, RefreshCw, Undo2 } from "lucide-react";
 import { useState } from "react";
 
 export interface QuickSetField {
@@ -29,6 +29,7 @@ interface FloatingActionBarProps {
     selectedCount: number;
     onClearSelection: () => void;
     onApprove?: () => void;
+    onUnapprove?: () => void;
     onRecalculate?: () => void;
     onQuickSet?: (field: string, value: string) => void;
     quickSetFields?: QuickSetField[];
@@ -39,6 +40,7 @@ export function FloatingActionBar({
     selectedCount,
     onClearSelection,
     onApprove,
+    onUnapprove,
     onRecalculate,
     onQuickSet,
     quickSetFields = [],
@@ -142,7 +144,7 @@ export function FloatingActionBar({
                 )}
 
                 {/* Divider before actions */}
-                {(onRecalculate || onApprove) && <div className="h-6 border-l" />}
+                {(onRecalculate || onApprove || onUnapprove) && <div className="h-6 border-l" />}
 
                 {/* Actions */}
                 {onRecalculate && (
@@ -155,6 +157,19 @@ export function FloatingActionBar({
                     >
                         <RefreshCw className="h-4 w-4 mr-1" />
                         Recalculate
+                    </Button>
+                )}
+
+                {onUnapprove && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={onUnapprove}
+                        disabled={isLoading}
+                    >
+                        <Undo2 className="h-4 w-4 mr-1" />
+                        Unapprove
                     </Button>
                 )}
 

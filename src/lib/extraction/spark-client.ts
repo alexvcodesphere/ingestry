@@ -46,6 +46,7 @@ interface IntentResult {
     allRows: boolean;
     isAmbiguous: boolean;
     isQuestion: boolean;  // True if user is asking about data, not modifying
+    isConfirmation: boolean;  // True if user is confirming a previous suggestion
     clarificationNeeded?: string;
 }
 
@@ -75,14 +76,24 @@ Return JSON:
   "allRows": true,                   // false if targets specific items
   "isAmbiguous": false,
   "isQuestion": false,               // true if asking ABOUT data (count, list, check)
+  "isConfirmation": false,           // true if user is confirming a previous suggestion (e.g., "yes, do it", "apply that")
   "clarificationNeeded": null
 }
 
+IMPORTANT:
+- If the user says things like "yes", "do it", "apply that", "change it", "make those changes", these are CONFIRMATIONS of a previous suggestion. Set isConfirmation=true and isQuestion=false.
+- Confirmations mean the user wants to APPLY previously discussed changes, not ask a question.
+- Look at conversation context to infer targetFields if the instruction itself doesn't specify them.
+
 Examples:
-- "Set all years to 2025" → targetFields: ["year"], contextFields: [], isQuestion: false
-- "How many items have year 2023?" → targetFields: [], contextFields: ["year"], isQuestion: true
-- "List all the brands" → targetFields: [], contextFields: ["brand"], isQuestion: true
-- "Fix the names" → targetFields: ["product_name"], contextFields: [], isQuestion: false`;
+- "Set all years to 2025" → targetFields: ["year"], contextFields: [], isQuestion: false, isConfirmation: false
+- "How many items have year 2023?" → targetFields: [], contextFields: ["year"], isQuestion: true, isConfirmation: false
+- "List all the brands" → targetFields: [], contextFields: ["brand"], isQuestion: true, isConfirmation: false
+- "Fix the names" → targetFields: ["product_name"], contextFields: [], isQuestion: false, isConfirmation: false
+- "Yes, change that" → isConfirmation: true, isQuestion: false
+- "Apply those changes" → isConfirmation: true, isQuestion: false
+- "Do it" → isConfirmation: true, isQuestion: false
+- "Yes, update the data" → isConfirmation: true, isQuestion: false`;
 
     const startTime = Date.now();
     
@@ -117,7 +128,7 @@ Examples:
         const targetFields = (parsed.targetFields || []).filter((f: string) => validFields.has(f));
         const contextFields = (parsed.contextFields || []).filter((f: string) => validFields.has(f));
 
-        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}, Question: ${parsed.isQuestion || false}`);
+        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}, Question: ${parsed.isQuestion || false}, Confirmation: ${parsed.isConfirmation || false}`);
 
         return {
             targetFields,
@@ -125,6 +136,7 @@ Examples:
             allRows: parsed.allRows !== false,
             isAmbiguous: parsed.isAmbiguous === true,
             isQuestion: parsed.isQuestion === true,
+            isConfirmation: parsed.isConfirmation === true,
             clarificationNeeded: parsed.clarificationNeeded,
         };
     } catch (e) {
@@ -135,6 +147,7 @@ Examples:
             allRows: true,
             isAmbiguous: false,
             isQuestion: false,
+            isConfirmation: false,
         };
     }
 }
@@ -208,10 +221,11 @@ export async function sparkAudit(
     // Phase 1: Parse intent to get target fields (with conversation history for context)
     console.log(`[Spark] Phase 1: Parsing intent for: "${instruction.substring(0, 50)}..."`);
     const intent = await parseIntent(instruction, fieldSchema, ai, options.conversationHistory);
-    console.log(`[Spark] Intent result: isQuestion=${intent.isQuestion}, targetFields=[${intent.targetFields.join(',')}], contextFields=[${intent.contextFields.join(',')}]`);
+    console.log(`[Spark] Intent result: isQuestion=${intent.isQuestion}, isConfirmation=${intent.isConfirmation}, targetFields=[${intent.targetFields.join(',')}], contextFields=[${intent.contextFields.join(',')}]`);
 
     // Handle ambiguous intent early (but not if allowQuestions is on - let it try as a question)
-    if (intent.isAmbiguous && intent.targetFields.length === 0 && !intent.isQuestion && !options.allowQuestions) {
+    // IMPORTANT: Don't treat confirmations as ambiguous even without target fields
+    if (intent.isAmbiguous && intent.targetFields.length === 0 && !intent.isQuestion && !intent.isConfirmation && !options.allowQuestions) {
         return {
             status: "ambiguous",
             patches: [],
@@ -221,11 +235,23 @@ export async function sparkAudit(
         };
     }
 
+    // CONFIRMATION HANDLING:
+    // If user is confirming a previous suggestion, skip question mode and proceed to patching
+    // The LLM will use conversation context to understand what changes to apply
+    if (intent.isConfirmation) {
+        console.log(`[Spark] Detected confirmation - proceeding to patch generation with conversation context`);
+        // For confirmations, use ALL fields since we need to let the LLM figure out from context
+        intent.targetFields = Object.keys(fieldSchema);
+    }
+
     // ROBUST QUESTION DETECTION:
     // If allowQuestions is true AND no target fields detected, treat as a question
     // This handles cases where the LLM fails to set isQuestion=true
-    const isEffectivelyQuestion = intent.isQuestion || 
-        (options.allowQuestions && intent.targetFields.length === 0);
+    // BUT: Skip this if user is confirming - confirmations are not questions
+    const isEffectivelyQuestion = !intent.isConfirmation && (
+        intent.isQuestion || 
+        (options.allowQuestions && intent.targetFields.length === 0)
+    );
     
     if (isEffectivelyQuestion) {
         console.log(`[Spark] Treating as question (explicit: ${intent.isQuestion}, fallback: ${options.allowQuestions && intent.targetFields.length === 0})`);

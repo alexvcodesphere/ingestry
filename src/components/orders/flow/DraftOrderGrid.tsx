@@ -58,6 +58,7 @@ interface DraftOrderGridProps {
     orderId: string;
     onUpdateItem: (itemId: string, updates: Partial<NormalizedProduct>) => Promise<void>;
     onApproveItems: (itemIds: string[]) => Promise<void>;
+    onUnapproveItems?: (itemIds: string[]) => Promise<void>;
     onApproveAll: () => Promise<void>;
     onRegenerateTemplates?: (itemIds: string[]) => Promise<void>;
     onBulkUpdate?: (itemIds: string[], updates: Partial<NormalizedProduct>) => Promise<void>;
@@ -88,6 +89,7 @@ export function DraftOrderGrid({
     orderId,
     onUpdateItem,
     onApproveItems,
+    onUnapproveItems,
     onApproveAll,
     onRegenerateTemplates,
     onBulkUpdate,
@@ -223,6 +225,7 @@ export function DraftOrderGrid({
                 // Special handling for templated fields with regenerate button
                 if (templatedFields.includes(field.key) && onRegenerateTemplates) {
                     const isRegenThis = regeneratingIds.has(item.id);
+                    const isApproved = item.status === "approved";
                     return (
                         <div className="flex items-center gap-1">
                             <EditableCell
@@ -230,7 +233,7 @@ export function DraftOrderGrid({
                                 onChange={(v) => handleCellUpdate(item.id, field.key as keyof NormalizedProduct, field.type === "number" ? parseFloat(v) || 0 : v)}
                                 hasError={!!error}
                                 errorMessage={error?.message}
-                                disabled={updatingRows.has(item.id) || isRegenThis}
+                                disabled={updatingRows.has(item.id) || isRegenThis || isApproved}
                                 type={field.type === "number" ? "number" : undefined}
                             />
                             <Button
@@ -251,8 +254,8 @@ export function DraftOrderGrid({
                     );
                 }
 
-                // Check for AI uncertainty flag on this field
                 const uncertaintyFlag = getFieldUncertainty(data, field.key);
+                const isApproved = item.status === "approved";
 
                 // Wrap cell content with uncertainty indicator if flagged
                 const cellContent = (
@@ -261,7 +264,7 @@ export function DraftOrderGrid({
                         onChange={(v) => handleCellUpdate(item.id, field.key as keyof NormalizedProduct, field.type === "number" ? parseFloat(v) || 0 : v)}
                         hasError={!!error}
                         errorMessage={error?.message}
-                        disabled={updatingRows.has(item.id)}
+                        disabled={updatingRows.has(item.id) || isApproved}
                         type={field.type === "number" ? "number" : undefined}
                     />
                 );
@@ -411,44 +414,6 @@ export function DraftOrderGrid({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    {selectedIds.length > 0 && (
-                        <>
-                            {onBulkUpdate && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setIsBulkEditOpen(true)}
-                                >
-                                    Edit Selected ({selectedIds.length})
-                                </Button>
-                            )}
-                            {onRegenerateTemplates && templatedFields.length > 0 && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleRegenerateTemplates(selectedIds)}
-                                    disabled={isRegenerating}
-                                >
-                                    {isRegenerating ? (
-                                        <span className="flex items-center gap-1">
-                                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                            Recalculating...
-                                        </span>
-                                    ) : (
-                                        `Recalculate Templates (${selectedIds.length})`
-                                    )}
-                                </Button>
-                            )}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => onApproveItems(selectedIds)}
-                                disabled={isSubmitting}
-                            >
-                                Approve Selected ({selectedIds.length})
-                            </Button>
-                        </>
-                    )}
                     {/* Spark toggle button */}
                     {onSparkToggle && (
                         <SparkToggleButton onClick={onSparkToggle} selectedCount={selectedIds.length} />
@@ -512,25 +477,45 @@ export function DraftOrderGrid({
             </div>
 
             {/* Floating Action Bar for bulk operations */}
-            <FloatingActionBar
-                selectedCount={selectedIds.length}
-                    onClearSelection={() => setRowSelection({})}
-                    onApprove={selectedIds.length > 0 ? () => onApproveItems(selectedIds) : undefined}
-                    onRecalculate={
-                        selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
-                            ? () => handleRegenerateTemplates(selectedIds)
-                            : undefined
-                    }
-                    onQuickSet={onBulkUpdate ? (field, value) => {
-                        onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
-                    } : undefined}
-                    quickSetFields={editableColumns.map(col => ({
-                        key: col.key,
-                        label: col.label,
-                        type: "text" as const,
-                    }))}
-                    isLoading={isBulkSaving || isRegenerating}
-                />
+            {(() => {
+                // Determine if selected items contain any approved ones
+                const hasApprovedSelected = selectedIds.some(id => 
+                    lineItems.find(i => i.id === id)?.status === 'approved'
+                );
+                const hasUnapprovedSelected = selectedIds.some(id => 
+                    lineItems.find(i => i.id === id)?.status !== 'approved'
+                );
+                
+                return (
+                    <FloatingActionBar
+                        selectedCount={selectedIds.length}
+                        onClearSelection={() => setRowSelection({})}
+                        // Show Approve only if there are unapproved items and no approved items
+                        onApprove={hasUnapprovedSelected && !hasApprovedSelected 
+                            ? () => onApproveItems(selectedIds) 
+                            : undefined}
+                        // Show Unapprove only if there are approved items selected
+                        onUnapprove={hasApprovedSelected && onUnapproveItems 
+                            ? () => onUnapproveItems(selectedIds.filter(id => lineItems.find(i => i.id === id)?.status === 'approved')) 
+                            : undefined}
+                        onRecalculate={
+                            selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
+                                ? () => handleRegenerateTemplates(selectedIds)
+                                : undefined
+                        }
+                        onQuickSet={onBulkUpdate ? (field, value) => {
+                            onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
+                        } : undefined}
+                        quickSetFields={editableColumns.map(col => ({
+                            key: col.key,
+                            label: col.label,
+                            type: "text" as const,
+                        }))}
+                        isLoading={isBulkSaving || isRegenerating}
+                    />
+                );
+            })()}
+
             <Dialog open={isBulkEditOpen} onOpenChange={setIsBulkEditOpen}>
                 <DialogContent>
                     <DialogHeader>

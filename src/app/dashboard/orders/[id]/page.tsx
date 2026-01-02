@@ -139,6 +139,24 @@ export default function OrderDetailPage() {
         }
     };
 
+    // Handle unapprove items
+    const handleUnapproveItems = async (itemIds: string[]) => {
+        try {
+            const response = await fetch(`/api/draft-orders/${orderId}/line-items`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "unapprove", lineItemIds: itemIds }),
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                await fetchOrder();
+            }
+        } catch (err) {
+            console.error("Failed to unapprove items:", err);
+        }
+    };
+
     // Handle template field regeneration
     const handleRegenerateTemplates = async (itemIds: string[]) => {
         try {
@@ -293,7 +311,7 @@ export default function OrderDetailPage() {
             {/* Validation Grid + Spark Sidebar */}
             <div className="flex gap-4 items-stretch">
                 <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between border-b">
+                    <CardHeader className="flex flex-row items-center justify-between border-b shrink-0">
                         <CardTitle className="text-base font-medium">Product Validation</CardTitle>
                     </CardHeader>
                     <CardContent className="p-6 flex-1 overflow-auto">
@@ -303,6 +321,7 @@ export default function OrderDetailPage() {
                                 orderId={orderId}
                                 onUpdateItem={handleUpdateItem}
                                 onApproveItems={handleApproveItems}
+                                onUnapproveItems={handleUnapproveItems}
                                 onApproveAll={handleApproveAll}
                                 onRegenerateTemplates={handleRegenerateTemplates}
                                 onBulkUpdate={handleBulkUpdate}
@@ -335,9 +354,8 @@ export default function OrderDetailPage() {
                     isOpen={sparkOpen}
                     onOpenChange={setSparkOpen}
                     onSparkComplete={(result) => {
-                        if (result.patchedIds.length > 0 || result.triggerRegeneration) {
-                            fetchOrder();
-                        }
+                        // Always refresh data after Spark operations (including undo)
+                        fetchOrder();
                     }}
                     onProcessingChange={setSparkProcessing}
                 />

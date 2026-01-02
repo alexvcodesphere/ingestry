@@ -129,7 +129,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         const body = await request.json();
         const { action, lineItemIds } = body as {
-            action: 'approve' | 'approve_all' | 'regenerate_sku' | 'regenerate_templates';
+            action: 'approve' | 'approve_all' | 'unapprove' | 'regenerate_sku' | 'regenerate_templates';
             lineItemIds?: string[];
         };
 
@@ -148,6 +148,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             return NextResponse.json({
                 success: result.success,
                 data: { approvedCount: result.count },
+            });
+        }
+
+        // Handle unapprove selected
+        if (action === 'unapprove' && lineItemIds?.length) {
+            const { error } = await supabase
+                .from('draft_line_items')
+                .update({ status: 'validated' })
+                .in('id', lineItemIds);
+            
+            if (error) {
+                return NextResponse.json(
+                    { success: false, error: 'Failed to unapprove items' },
+                    { status: 500 }
+                );
+            }
+            
+            // Update order status back to pending_review since not all items are approved
+            await supabase
+                .from('draft_orders')
+                .update({ status: 'pending_review' })
+                .eq('id', orderId);
+            
+            return NextResponse.json({
+                success: true,
+                data: { unapprovedCount: lineItemIds.length },
             });
         }
 
