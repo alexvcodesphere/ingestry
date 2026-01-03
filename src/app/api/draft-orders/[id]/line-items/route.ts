@@ -277,10 +277,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             }
 
             // Build catalog key mapping from profile
-            const lookupTypeMapping: Record<string, string> = {};
+            const catalogKeyMapping: Record<string, string> = {};
             for (const field of profile.fields || []) {
                 if (field.catalog_key) {
-                    lookupTypeMapping[field.key] = field.catalog_key;
+                    catalogKeyMapping[field.key] = field.catalog_key;
                 }
             }
 
@@ -302,7 +302,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 const context: TemplateContext = {
                     values: productValues,
                     sequence: item.line_number || 1,
-                    lookupTypeMapping,
+                    catalogKeyMapping,
                 };
 
                 const updates: Record<string, string> = {};

@@ -179,10 +179,10 @@ export interface SkuTemplate {
 }
 
 // ============================================
-// Code Lookups (Dynamic Lookup Types)
+// Catalog Entries (Dynamic Catalog Types)
 // ============================================
 
-export interface CodeLookup {
+export interface CatalogEntry {
     id: string;
     field_key: string;  // Dynamic: brand, category, color, gender, + custom types
     name: string;
@@ -194,7 +194,7 @@ export interface CodeLookup {
     created_at?: string;
 }
 
-export interface LookupColumnDef {
+export interface CatalogField {
     id: string;
     tenant_id: string;
     field_key: string;
@@ -204,6 +204,11 @@ export interface LookupColumnDef {
     is_default: boolean;
     sort_order: number;
 }
+
+/** @deprecated Use CatalogEntry instead */
+export type CodeLookup = CatalogEntry;
+/** @deprecated Use CatalogField instead */
+export type LookupColumnDef = CatalogField;
 
 // Processing profile type for database
 export interface ProcessingProfile {

@@ -66,7 +66,7 @@ export async function processCatalogMatching(
     const templateContext: TemplateContext = {
         values: valuesWithFallbacks,
         sequence: index + 1,
-        lookupTypeMapping: catalogKeyMapping,
+        catalogKeyMapping: catalogKeyMapping,
     };
 
     // Step 4: Process templated fields

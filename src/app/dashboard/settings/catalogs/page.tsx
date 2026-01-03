@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Code Lookups Settings Page
- * Manage global lookup entries (brand, category, color, custom, etc.)
- * Lookups are keyed by field_key and shared across all profiles.
+ * Catalogs Settings Page
+ * Manage global catalog entries (brand, category, color, custom, etc.)
+ * Catalog entries are keyed by field_key and shared across all profiles.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { Trash2 } from "lucide-react";
-import type { CodeLookup } from "@/types";
+import type { CatalogEntry } from "@/types";
 
 // Simple field key info for tabs
 interface FieldKeyInfo {
@@ -62,7 +62,7 @@ type LookupItem = {
     created_at?: string;
 };
 
-export default function CodeLookupsPage() {
+export default function CatalogsPage() {
     const [fieldDefinitions, setFieldDefinitions] = useState<FieldKeyInfo[]>([]);
     const [activeType, setActiveType] = useState<string>("");
     const [lookups, setLookups] = useState<LookupItem[]>([]);
@@ -116,9 +116,9 @@ export default function CodeLookupsPage() {
         setIsTypesLoading(true);
         const supabase = createClient();
 
-        // Get distinct field_keys from code_lookups
+        // Get distinct field_keys from catalog_entries
         const { data, error } = await supabase
-            .from("code_lookups")
+            .from("catalog_entries")
             .select("field_key")
             .order("field_key");
 
@@ -157,13 +157,13 @@ export default function CodeLookupsPage() {
         const supabase = createClient();
 
         const { data, error } = await supabase
-            .from("code_lookups")
+            .from("catalog_entries")
             .select("*")
             .eq("field_key", typeSlug)
             .order("sort_order");
 
         if (!error && data) {
-            setLookups(data.map((l: CodeLookup) => ({
+            setLookups(data.map((l: CatalogEntry) => ({
                 id: l.id,
                 name: l.name,
                 code: l.code,
@@ -179,7 +179,7 @@ export default function CodeLookupsPage() {
         if (!fieldKey) return;
         const supabase = createClient();
         const { data } = await supabase
-            .from("lookup_column_defs")
+            .from("catalog_fields")
             .select("*")
             .eq("field_key", fieldKey)
             .order("sort_order");
@@ -203,7 +203,7 @@ export default function CodeLookupsPage() {
 
         setIsTesting(true);
         try {
-            const response = await fetch('/api/lookups/test', {
+            const response = await fetch('/api/catalogs/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ value: testInput, lookupType: activeType }),
@@ -251,7 +251,7 @@ export default function CodeLookupsPage() {
 
             if (editingLookup) {
                 const { error } = await supabase
-                    .from("code_lookups")
+                    .from("catalog_entries")
                     .update({
                         name: formData.name,
                         code: formData.code.toUpperCase(),
@@ -262,7 +262,7 @@ export default function CodeLookupsPage() {
                 if (error) throw error;
             } else {
                 const { error } = await supabase
-                    .from("code_lookups")
+                    .from("catalog_entries")
                     .insert({
                         field_key: activeType,
                         name: formData.name,
@@ -287,7 +287,7 @@ export default function CodeLookupsPage() {
         if (!confirm("Delete this item?")) return;
 
         const supabase = createClient();
-        await supabase.from("code_lookups").delete().eq("id", id);
+        await supabase.from("catalog_entries").delete().eq("id", id);
         await fetchLookups(activeType);
     };
 
@@ -299,9 +299,8 @@ export default function CodeLookupsPage() {
         const newFieldKey = typeFormData.slug || typeFormData.label.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
         try {
-            // Insert a placeholder entry to create this field_key
             const { error } = await supabase
-                .from("code_lookups")
+                .from("catalog_entries")
                 .insert({
                     field_key: newFieldKey,
                     name: "Example",
@@ -327,7 +326,7 @@ export default function CodeLookupsPage() {
         if (!confirm(`Delete all "${fieldKey}" lookup entries?`)) return;
 
         const supabase = createClient();
-        await supabase.from("code_lookups").delete().eq("field_key", fieldKey);
+        await supabase.from("catalog_entries").delete().eq("field_key", fieldKey);
 
         await fetchFieldKeys();
         if (fieldDefinitions.length > 1) {
@@ -359,9 +358,9 @@ export default function CodeLookupsPage() {
         return (
             <div className="space-y-6">
                 <div>
-                    <h3 className="text-xl font-semibold">Code Lookups</h3>
+                    <h3 className="text-xl font-semibold">Catalogs</h3>
                     <p className="text-sm text-muted-foreground">
-                        No lookup types configured yet.
+                        No catalog types configured yet.
                     </p>
                 </div>
                 <Button onClick={() => setIsTypeDialogOpen(true)}>
@@ -377,7 +376,7 @@ export default function CodeLookupsPage() {
                 {/* Header */}
                 <div className="space-y-4">
                     <div>
-                        <h2 className="text-2xl font-bold tracking-tight">Code Lookups</h2>
+                        <h2 className="text-2xl font-bold tracking-tight">Catalogs</h2>
                         <p className="text-sm text-muted-foreground">Normalize values and generate SKU codes</p>
                     </div>
                     <TabsList className="flex-wrap w-full">
@@ -774,7 +773,7 @@ export default function CodeLookupsPage() {
                             onClick={async () => {
                                 if (!newColumnData.label || !newColumnData.key) return;
                                 const supabase = createClient();
-                                await supabase.from("lookup_column_defs").insert({
+                                await supabase.from("catalog_fields").insert({
                                     field_key: activeType,
                                     column_key: newColumnData.key,
                                     column_label: newColumnData.label,

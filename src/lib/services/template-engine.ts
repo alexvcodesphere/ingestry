@@ -5,13 +5,13 @@
  * Template syntax: {variable.code:N} or {variable:N}
  * 
  * Modifiers:
- *   .code  - Use the lookup code (e.g., "NV" for "Nike")
+ *   .code  - Use the catalog code (e.g., "NV" for "Nike")
  *   :N     - Truncate/pad to N characters
  * 
  * Examples:
  *   {brand:2}      - First 2 characters of brand value
- *   {brand.code}   - Lookup code for brand (e.g., "NK" for "Nike")
- *   {color.code:2} - Lookup code for color, padded to 2 chars
+ *   {brand.code}   - Catalog code for brand (e.g., "NK" for "Nike")
+ *   {color.code:2} - Catalog code for color, padded to 2 chars
  *   {sequence:3}   - Sequence number, padded to 3 digits
  *   {size}         - Size value, as-is
  */
@@ -23,7 +23,7 @@ import { createClient } from '@/lib/supabase/server';
  */
 export interface TemplateVariable {
     name: string;
-    useCode?: boolean;  // Whether to use lookup code (.code modifier)
+    useCode?: boolean;  // Whether to use catalog code (.code modifier)
     customKey?: string; // Custom column key from extra_data (e.g., .xentral_code)
     modifier?: number;  // Length/padding modifier (:N)
 }
@@ -39,7 +39,7 @@ export interface TemplateContext {
     /** Sequence number for this product in the batch */
     sequence: number;
     /** Mapping from field key to catalog key (from catalog_key) */
-    lookupTypeMapping?: Record<string, string>;
+    catalogKeyMapping?: Record<string, string>;
 }
 
 /**
@@ -85,7 +85,7 @@ export function parseTemplate(template: string): Array<string | TemplateVariable
 /**
  * Resolve a single variable to its value
  * - {sequence} is computed
- * - {variable.code} uses lookup codes
+ * - {variable.code} uses catalog codes
  * - {variable.custom_key} uses extra_data custom columns
  * - All other variables use raw values
  */
@@ -105,16 +105,16 @@ export async function resolveVariable(
         const rawValue = getContextValue(variable.name, context);
 
         if (variable.useCode) {
-            // Use lookup code (.code modifier)
-            // Map field key to lookup type using normalize_with mapping (case-insensitive)
-            const lookupType = getLookupType(variable.name, context.lookupTypeMapping);
-            const lookupResult = await lookupCode(lookupType, rawValue, lookups);
-            value = lookupResult !== '00' ? lookupResult : rawValue;
+            // Use catalog code (.code modifier)
+            // Map field key to catalog type using catalog_key mapping (case-insensitive)
+            const catalogType = getCatalogType(variable.name, context.catalogKeyMapping);
+            const catalogResult = await getCatalogCode(catalogType, rawValue, lookups);
+            value = catalogResult !== '00' ? catalogResult : rawValue;
         } else if (variable.customKey) {
             // Use custom column from extra_data
-            // Map field key to lookup type using normalize_with mapping (case-insensitive)
-            const lookupType = getLookupType(variable.name, context.lookupTypeMapping);
-            const extraData = await lookupExtraData(lookupType, rawValue, extraDataLookups);
+            // Map field key to catalog type using catalog_key mapping (case-insensitive)
+            const catalogType = getCatalogType(variable.name, context.catalogKeyMapping);
+            const extraData = await getCatalogExtraData(catalogType, rawValue, extraDataLookups);
             value = extraData[variable.customKey] !== undefined ? String(extraData[variable.customKey]) : '';
         } else {
             // No modifier - use raw value directly
@@ -137,9 +137,9 @@ export async function resolveVariable(
 }
 
 /**
- * Get lookup type from mapping, case-insensitive
+ * Get catalog type from mapping, case-insensitive
  */
-function getLookupType(name: string, mapping?: Record<string, string>): string {
+function getCatalogType(name: string, mapping?: Record<string, string>): string {
     if (!mapping) return name;
     // Direct match first
     if (mapping[name]) return mapping[name];
@@ -173,9 +173,9 @@ function getContextValue(name: string, context: TemplateContext): string {
 }
 
 /**
- * Look up a code from the code_lookups table
+ * Look up a code from the catalog_entries table
  */
-async function lookupCode(
+async function getCatalogCode(
     type: string,
     name: string,
     lookups: Map<string, Map<string, string>>
@@ -203,9 +203,9 @@ async function lookupCode(
 }
 
 /**
- * Look up extra_data from the extraData lookups map
+ * Look up extra_data from the catalog extra data map
  */
-async function lookupExtraData(
+async function getCatalogExtraData(
     type: string,
     name: string,
     extraDataLookups: Map<string, Map<string, Record<string, unknown>>>
@@ -233,18 +233,18 @@ async function lookupExtraData(
 }
 
 /**
- * Load all code lookups from database
+ * Load all catalog entries from database
  */
-export async function loadCodeLookups(): Promise<Map<string, Map<string, string>>> {
+export async function loadCatalogEntries(): Promise<Map<string, Map<string, string>>> {
     const supabase = await createClient();
     const lookups = new Map<string, Map<string, string>>();
 
     const { data, error } = await supabase
-        .from('code_lookups')
+        .from('catalog_entries')
         .select('field_key, name, code, aliases');
 
     if (error || !data) {
-        console.error('Failed to load code lookups:', error);
+        console.error('Failed to load catalog entries:', error);
         return lookups;
     }
 
@@ -268,19 +268,22 @@ export async function loadCodeLookups(): Promise<Map<string, Map<string, string>
     return lookups;
 }
 
+/** @deprecated Use loadCatalogEntries instead */
+export const loadCodeLookups = loadCatalogEntries;
+
 /**
- * Load all code lookups with extra_data from database
+ * Load all catalog entries with extra_data from database
  */
-export async function loadExtraDataLookups(): Promise<Map<string, Map<string, Record<string, unknown>>>> {
+export async function loadCatalogExtraData(): Promise<Map<string, Map<string, Record<string, unknown>>>> {
     const supabase = await createClient();
     const lookups = new Map<string, Map<string, Record<string, unknown>>>();
 
     const { data, error } = await supabase
-        .from('code_lookups')
+        .from('catalog_entries')
         .select('field_key, name, aliases, extra_data');
 
     if (error || !data) {
-        console.error('Failed to load extra_data lookups:', error);
+        console.error('Failed to load catalog extra data:', error);
         return lookups;
     }
 
@@ -305,6 +308,9 @@ export async function loadExtraDataLookups(): Promise<Map<string, Map<string, Re
     return lookups;
 }
 
+/** @deprecated Use loadCatalogExtraData instead */
+export const loadExtraDataLookups = loadCatalogExtraData;
+
 /**
  * Evaluate a template with the given context
  */
@@ -318,8 +324,8 @@ export async function evaluateTemplate(
     const segments = parseTemplate(template);
     
     // Use provided caches or load from DB if missing
-    const lookups = codeLookups || await loadCodeLookups();
-    const extras = extraDataLookups || await loadExtraDataLookups();
+    const lookups = codeLookups || await loadCatalogEntries();
+    const extras = extraDataLookups || await loadCatalogExtraData();
 
     const parts: string[] = [];
     for (const segment of segments) {

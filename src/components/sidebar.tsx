@@ -16,7 +16,7 @@ const mainNavigation = [
 const settingsSubItems = [
     { name: "Overview", href: "/dashboard/settings", icon: Settings },
     { name: "Profiles", href: "/dashboard/settings/processing", icon: FileInput },
-    { name: "Lookups", href: "/dashboard/settings/lookups", icon: BookOpen },
+    { name: "Catalogs", href: "/dashboard/settings/catalogs", icon: BookOpen },
 ];
 
 export function Sidebar() {

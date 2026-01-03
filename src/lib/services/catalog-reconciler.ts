@@ -104,7 +104,7 @@ export async function getCatalogMatchGuide(catalogKeys: string[]): Promise<strin
     const supabase = await createClient();
     
     const { data } = await supabase
-        .from('code_lookups')
+        .from('catalog_entries')
         .select('field_key, name')
         .in('field_key', catalogKeys);
     
@@ -134,7 +134,7 @@ export async function prefetchCatalog(catalogKeys: string[]): Promise<void> {
     
     // Fetch all lookups for all types in one query
     const { data: lookups } = await supabase
-        .from('code_lookups')
+        .from('catalog_entries')
         .select('field_key, name, code, aliases, extra_data')
         .in('field_key', catalogKeys);
     
@@ -183,7 +183,7 @@ async function getCatalogEntriesForKey(catalogKey: string): Promise<CatalogEntry
     // Fallback to database query if not cached
     const supabase = await createClient();
     const { data: lookups } = await supabase
-        .from('code_lookups')
+        .from('catalog_entries')
         .select('name, code, aliases, extra_data')
         .eq('field_key', catalogKey);
     

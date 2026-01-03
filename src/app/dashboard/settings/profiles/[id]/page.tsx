@@ -19,7 +19,7 @@ import { ExportTab } from "@/components/settings/ExportTab";
 import { ProfilePreviewTable } from "@/components/settings/ProfilePreviewTable";
 import { FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy, Pencil } from "lucide-react";
 
-interface LookupOption {
+interface CatalogOption {
     field_key: string;
 }
 
@@ -32,7 +32,7 @@ export default function ProfileEditorPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
-    const [lookupOptions, setLookupOptions] = useState<LookupOption[]>([]);
+    const [catalogOptions, setCatalogOptions] = useState<CatalogOption[]>([]);
     const [activeTab, setActiveTab] = useState("intake");
     const initialFormData = useRef<string>("");
 
@@ -124,22 +124,22 @@ export default function ProfileEditorPage() {
         setIsLoading(false);
     }, [profileId, isNew, router]);
 
-    const fetchLookupOptions = useCallback(async () => {
+    const fetchCatalogOptions = useCallback(async () => {
         const supabase = createClient();
         const { data } = await supabase
-            .from("code_lookups")
+            .from("catalog_entries")
             .select("field_key")
             .order("field_key");
         if (data) {
             const unique = [...new Set(data.map((d) => d.field_key))];
-            setLookupOptions(unique.map((fk) => ({ field_key: fk })));
+            setCatalogOptions(unique.map((fk) => ({ field_key: fk })));
         }
     }, []);
 
     useEffect(() => {
         fetchProfile();
-        fetchLookupOptions();
-    }, [fetchProfile, fetchLookupOptions]);
+        fetchCatalogOptions();
+    }, [fetchProfile, fetchCatalogOptions]);
 
     const handleFieldsChange = (newFields: FieldDefinition[]) => {
         const currentKeys = new Set(formData.fields.map(f => f.key));
@@ -382,7 +382,7 @@ export default function ProfileEditorPage() {
                             {activeTab === 'transform' && (
                                 <TransformTab
                                     fields={formData.fields}
-                                    lookupOptions={lookupOptions}
+                                    catalogOptions={catalogOptions}
                                     skuTemplate={formData.sku_template}
                                     generateSku={formData.generate_sku}
                                     onFieldsChange={(fields) => setFormData({ ...formData, fields })}

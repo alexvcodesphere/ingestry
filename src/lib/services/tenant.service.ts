@@ -22,18 +22,7 @@ export interface TenantMember {
     role: 'owner' | 'admin' | 'member';
 }
 
-export interface LookupType {
-    id: string;
-    tenant_id: string;
-    slug: string;
-    label: string;
-    description?: string;
-    is_system: boolean;
-    variable_name?: string;
-    sort_order: number;
-}
-
-/** New unified field definition (replaces lookup_types) */
+/** Field definition for the unified field system */
 export interface FieldDefinition {
     id: string;
     tenant_id: string;
@@ -92,26 +81,7 @@ export async function getCurrentTenant(): Promise<Tenant | null> {
 }
 
 /**
- * Get all lookup types for the current tenant
- */
-export async function getLookupTypes(): Promise<LookupType[]> {
-    const supabase = await createClient();
-    const tenantId = await getCurrentTenantId();
-
-    if (!tenantId) return [];
-
-    const { data, error } = await supabase
-        .from('lookup_types')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('sort_order');
-
-    if (error || !data) return [];
-    return data as LookupType[];
-}
-
-/**
- * Get all field definitions for the current tenant (new unified system)
+ * Get all field definitions for the current tenant
  */
 export async function getFieldDefinitions(): Promise<FieldDefinition[]> {
     const supabase = await createClient();
@@ -127,81 +97,6 @@ export async function getFieldDefinitions(): Promise<FieldDefinition[]> {
 
     if (error || !data) return [];
     return data as FieldDefinition[];
-}
-
-/**
- * Create a new custom lookup type
- */
-export async function createLookupType(input: {
-    slug: string;
-    label: string;
-    description?: string;
-    variable_name?: string;
-}): Promise<LookupType | null> {
-    const supabase = await createClient();
-    const tenantId = await getCurrentTenantId();
-
-    if (!tenantId) return null;
-
-    // Get max sort_order
-    const { data: existing } = await supabase
-        .from('lookup_types')
-        .select('sort_order')
-        .eq('tenant_id', tenantId)
-        .order('sort_order', { ascending: false })
-        .limit(1);
-
-    const nextOrder = (existing?.[0]?.sort_order || 0) + 1;
-
-    const { data, error } = await supabase
-        .from('lookup_types')
-        .insert({
-            tenant_id: tenantId,
-            slug: input.slug.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-            label: input.label,
-            description: input.description,
-            variable_name: input.variable_name || input.slug.toLowerCase(),
-            is_system: false,
-            sort_order: nextOrder,
-        })
-        .select()
-        .single();
-
-    if (error) {
-        console.error('Failed to create lookup type:', error);
-        return null;
-    }
-
-    return data as LookupType;
-}
-
-/**
- * Delete a custom lookup type (not system types)
- */
-export async function deleteLookupType(id: string): Promise<boolean> {
-    const supabase = await createClient();
-    const tenantId = await getCurrentTenantId();
-
-    if (!tenantId) return false;
-
-    const { error } = await supabase
-        .from('lookup_types')
-        .delete()
-        .eq('id', id)
-        .eq('tenant_id', tenantId)
-        .eq('is_system', false); // Can't delete system types
-
-    return !error;
-}
-
-/**
- * Seed default lookup types for a new tenant
- * NOTE: No default types are seeded - users create all lookup types themselves.
- * This supports productization where each tenant has their own custom setup.
- */
-export async function seedLookupTypesForTenant(_tenantId: string): Promise<void> {
-    // No default lookup types - users create their own
-    // This function is kept for backwards compatibility but does nothing
 }
 
 /**
@@ -225,4 +120,3 @@ export async function getTenantMembers(): Promise<TenantUserProfile[]> {
 
     return data as TenantUserProfile[];
 }
-

@@ -259,10 +259,10 @@ export async function POST(request: NextRequest) {
                     const codeLookups = await loadCodeLookups();
                     const extraDataLookups = await loadExtraDataLookups();
                     
-                    const lookupTypeMapping: Record<string, string> = {};
+                    const catalogKeyMapping: Record<string, string> = {};
                     for (const field of profile.fields || []) {
                         if ((field as { catalog_key?: string }).catalog_key) {
-                            lookupTypeMapping[field.key] = (field as { catalog_key: string }).catalog_key;
+                            catalogKeyMapping[field.key] = (field as { catalog_key: string }).catalog_key;
                         }
                     }
 
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
                         const context: TemplateContext = {
                             values: productValues,
                             sequence: item.line_number || 1,
-                            lookupTypeMapping,
+                            catalogKeyMapping,
                         };
 
                         const updates: Record<string, string> = {};

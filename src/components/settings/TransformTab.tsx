@@ -25,13 +25,13 @@ import {
 import type { FieldDefinition } from "@/types";
 import { Plus, Sparkles, Calculator, Trash2, Wand2, ChevronDown, Search } from "lucide-react";
 
-interface LookupOption {
+interface CatalogOption {
     field_key: string;
 }
 
 interface TransformTabProps {
     fields: FieldDefinition[];
-    lookupOptions: LookupOption[];
+    catalogOptions: CatalogOption[];
     skuTemplate: string;
     generateSku: boolean;
     onFieldsChange: (fields: FieldDefinition[]) => void;
@@ -41,7 +41,7 @@ interface TransformTabProps {
 
 export function TransformTab({
     fields,
-    lookupOptions,
+    catalogOptions,
     onFieldsChange,
 }: TransformTabProps) {
     const [newComputedKey, setNewComputedKey] = useState("");
@@ -342,7 +342,7 @@ export function TransformTab({
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="_none">No catalog</SelectItem>
-                                            {lookupOptions.map((opt) => (
+                                            {catalogOptions.map((opt) => (
                                                 <SelectItem key={opt.field_key} value={opt.field_key}>
                                                     {opt.field_key}
                                                 </SelectItem>
