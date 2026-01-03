@@ -16,31 +16,32 @@ A Next.js application for extracting, normalizing, and managing product data fro
 ## Architecture
 
 src/
-├── app/                    # Next.js App Router
-│   ├── api/                # API routes
-│   │   ├── draft-orders/   # Order processing endpoints
-│   │   ├── jobs/           # Background job status
-│   │   └── lookups/        # Normalization testing
-│   ├── dashboard/          # Main application UI
-│   │   ├── orders/         # Order management
-│   │   ├── products/       # Product catalog
-│   │   └── settings/       # Configuration pages
-│   └── login/              # Authentication
+├── app/ # Next.js App Router
+│ ├── api/ # API routes
+│ │ ├── draft-orders/ # Order processing endpoints
+│ │ ├── jobs/ # Background job status
+│ │ └── lookups/ # Normalization testing
+│ ├── dashboard/ # Main application UI
+│ │ ├── orders/ # Order management
+│ │ ├── products/ # Product catalog
+│ │ └── settings/ # Configuration pages
+│ └── login/ # Authentication
 │
-├── components/             # React components
-│   ├── orders/flow/        # Draft order grid & editing
-│   ├── ui/                 # shadcn/ui components
-│   └── validation/         # Validation display
+├── components/ # React components
+│ ├── orders/flow/ # Draft order grid & editing
+│ ├── ui/ # shadcn/ui components
+│ └── validation/ # Validation display
 │
-├── lib/                    # Core business logic
-│   ├── adapters/           # Shop system integrations
-│   ├── azure/              # Azure Document Intelligence (optional)
-│   ├── gpt/                # OpenAI GPT extraction
-│   ├── modules/processing/ # Processing pipeline
-│   ├── services/           # Business services
-│   └── supabase/           # Database client
+├── lib/ # Core business logic
+│ ├── adapters/ # Shop system integrations
+│ ├── azure/ # Azure Document Intelligence (optional)
+│ ├── gpt/ # OpenAI GPT extraction
+│ ├── modules/processing/ # Processing pipeline
+│ ├── services/ # Business services
+│ └── supabase/ # Database client
 │
-└── types/                  # TypeScript definitions
+└── types/ # TypeScript definitions
+
 ```
 
 ## Processing Pipeline
@@ -48,32 +49,34 @@ src/
 The core data flow for processing uploaded documents:
 
 ```
-┌─────────────┐     ┌───────────────┐     ┌─────────────┐     ┌────────────┐
-│ PDF Upload  │ ──▶ │ GPT Extraction│ ──▶ │ Normalizer  │ ──▶ │ Validation │
-└─────────────┘     └───────────────┘     └─────────────┘     └────────────┘
-                           │                     │                    │
-                           │                     │                    │
-                    Uses Processing        Uses code_lookups     Validates
-                       Profile             for field values    required fields
-                    (REQUIRED)                   │                    │
-                           ▼                     ▼                    ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  Draft Order                         │
-                    │   (line_items with raw_data + normalized_data)      │
-                    └─────────────────────────────────────────────────────┘
-                                              │
-                                              ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │              Human Validation UI                     │
-                    │     (edit, approve, regenerate SKUs)                │
-                    └─────────────────────────────────────────────────────┘
-                                              │
-                                              ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │              Shop System Export                      │
-                    │     (Shopware / Xentral / Shopify adapters)         │
-                    └─────────────────────────────────────────────────────┘
-```
+
+┌─────────────┐ ┌───────────────┐ ┌─────────────┐ ┌────────────┐
+│ PDF Upload │ ──▶ │ GPT Extraction│ ──▶ │ Normalizer │ ──▶ │ Validation │
+└─────────────┘ └───────────────┘ └─────────────┘ └────────────┘
+│ │ │
+│ │ │
+Uses Processing Uses code_lookups Validates
+Profile for field values required fields
+(REQUIRED) │ │
+▼ ▼ ▼
+┌─────────────────────────────────────────────────────┐
+│ Draft Order │
+│ (line_items with raw_data + normalized_data) │
+└─────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────┐
+│ Human Validation UI │
+│ (edit, approve, regenerate SKUs) │
+└─────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────┐
+│ Shop System Export │
+│ (Shopware / Xentral / Shopify adapters) │
+└─────────────────────────────────────────────────────┘
+
+````
 
 **Note:** Processing profiles are **required**. All field extraction, normalization, and SKU templating is driven by the selected profile.
 
@@ -91,7 +94,7 @@ The core data flow for processing uploaded documents:
 | File | Purpose |
 |------|---------|
 | `template-engine.ts` | Parses and evaluates SKU templates with `{variable}` syntax |
-| `lookup-normalizer.ts` | Fuzzy matching engine for value normalization |
+| `catalog-reconciler.ts` | Catalog matching and fuzzy value normalization |
 | `draft-order.service.ts` | CRUD operations for draft orders |
 | `tenant.service.ts` | Multi-tenant context management |
 
@@ -167,26 +170,26 @@ All tables use Supabase RLS with tenant isolation:
 ```sql
 CREATE POLICY "Tenant isolation" ON table_name
     FOR ALL USING (tenant_id = get_user_tenant_id());
-```
+````
 
 ## API Routes
 
 ### Draft Orders
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/draft-orders` | List orders with pagination |
-| POST | `/api/draft-orders` | Create order (upload + process) |
-| GET | `/api/draft-orders/[id]` | Get order details |
-| PATCH | `/api/draft-orders/[id]` | Update order status |
-| POST | `/api/draft-orders/[id]/line-items` | Update line items |
-| POST | `/api/draft-orders/[id]/submit` | Export to shop system |
+| Method | Endpoint                            | Description                     |
+| ------ | ----------------------------------- | ------------------------------- |
+| GET    | `/api/draft-orders`                 | List orders with pagination     |
+| POST   | `/api/draft-orders`                 | Create order (upload + process) |
+| GET    | `/api/draft-orders/[id]`            | Get order details               |
+| PATCH  | `/api/draft-orders/[id]`            | Update order status             |
+| POST   | `/api/draft-orders/[id]/line-items` | Update line items               |
+| POST   | `/api/draft-orders/[id]/submit`     | Export to shop system           |
 
 ### Lookups
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/lookups/test` | Test normalization matching |
+| Method | Endpoint            | Description                 |
+| ------ | ------------------- | --------------------------- |
+| POST   | `/api/lookups/test` | Test normalization matching |
 
 ## Environment Variables
 

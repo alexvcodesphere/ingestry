@@ -1,10 +1,10 @@
 /**
- * Xentral CSV Output Profile Seed
- * Pre-built output profile for Xentral ERP CSV import format.
- * Users can clone and customize this for their specific Xentral configuration.
+ * Xentral CSV Export Config Template
+ * Pre-built export configuration for Xentral ERP CSV import format.
+ * This can be used as a starting point for creating Xentral export configs.
  */
 
-import type { OutputProfile, FieldMapping } from '../types';
+import type { FieldMapping, ExportConfig } from '@/types';
 
 /**
  * Default field mappings for Xentral CSV format.
@@ -54,27 +54,20 @@ export const XENTRAL_FIELD_MAPPINGS: FieldMapping[] = [
 ];
 
 /**
- * Complete Xentral CSV output profile.
- * This can be inserted as a seed profile for new tenants.
+ * Complete Xentral CSV export config template.
+ * Use this as a starting point when adding export configs to a processing profile.
  */
-export const XENTRAL_CSV_PROFILE: Omit<OutputProfile, 'id' | 'tenant_id' | 'created_at'> = {
-    name: 'Xentral CSV',
-    description: 'CSV export format for Xentral ERP import',
-    field_mappings: XENTRAL_FIELD_MAPPINGS,
-    format: 'csv',
-    format_options: {
-        delimiter: ';',
-        include_header: true,
-    },
-    is_default: true,
-};
-
-/**
- * Get the Xentral seed profile for a specific tenant.
- */
-export function createXentralProfile(tenantId: string): Omit<OutputProfile, 'id' | 'created_at'> {
+export function createXentralExportConfig(id: string = 'xentral-csv'): ExportConfig {
     return {
-        ...XENTRAL_CSV_PROFILE,
-        tenant_id: tenantId,
+        id,
+        name: 'Xentral CSV',
+        shop_system: 'xentral',
+        field_mappings: XENTRAL_FIELD_MAPPINGS,
+        format: 'csv',
+        format_options: {
+            delimiter: ';',
+            include_header: true,
+        },
+        is_default: true,
     };
 }

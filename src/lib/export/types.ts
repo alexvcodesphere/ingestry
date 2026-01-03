@@ -4,26 +4,17 @@
  * See /archive/EXPORT_ARCHITECTURE.md for full documentation.
  */
 
+// Re-export core types from global types
+export type { FieldMapping, ExportConfig } from '@/types';
+
+// Alias for backwards compatibility - use ExportConfig going forward
+export type { ExportConfig as OutputProfile } from '@/types';
+
 /**
  * Generic data record - fully dynamic, no hardcoded fields.
  * Used throughout the export layer.
  */
 export type DataRecord = Record<string, unknown>;
-
-/**
- * Field mapping configuration.
- * Maps source field names to target field names with optional templates.
- */
-export interface FieldMapping {
-    /** Key from processed data (e.g., "brand") */
-    source: string;
-    /** Key in output format (e.g., "hersteller") */
-    target: string;
-    /** Optional template using {variable} syntax (e.g., "{brand} - {name}") */
-    template?: string;
-    /** Fallback value if source is empty */
-    default_value?: string;
-}
 
 /**
  * Format-specific options for serialization.
@@ -35,28 +26,6 @@ export interface FormatOptions {
     include_header?: boolean;
     /** Explicit column ordering for CSV output */
     column_order?: string[];
-}
-
-/**
- * Output Profile configuration.
- * @deprecated Use ExportConfig from '@/types' instead. Kept for backwards compatibility.
- * Defines how to map and format data for export to external systems.
- */
-export interface OutputProfile {
-    id: string;
-    tenant_id?: string;
-    name: string;
-    description?: string;
-    shop_system?: 'shopify' | 'shopware' | 'xentral';
-    /** Field mappings from internal to external format */
-    field_mappings: FieldMapping[];
-    /** Output format type */
-    format: 'csv' | 'json';
-    /** Format-specific options */
-    format_options: FormatOptions;
-    /** Whether this is the default profile for the tenant */
-    is_default?: boolean;
-    created_at?: string;
 }
 
 /**

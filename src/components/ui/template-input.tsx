@@ -3,26 +3,24 @@
 /**
  * TemplateInput Component
  * Input with autocomplete for template variables.
- * Shows available field keys when typing '{'.
+ * Shows available field keys when typing '{' with search functionality.
+ * 
+ * Supports two interfaces:
+ * - `fields: FieldConfig[]` - Rich field metadata with labels and catalog info
+ * - `variables: string[]` - Simple string list (backwards compatible)
  */
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { Search, Braces } from "lucide-react";
 
 export interface FieldConfig {
     key: string;
     label: string;
     catalog_key?: string;
     use_template?: boolean;
+    source?: 'extracted' | 'computed';
     fallback?: string;
-}
-
-export interface TemplateInputProps {
-    value: string;
-    onChange: (value: string) => void;
-    fields: FieldConfig[];
-    placeholder?: string;
-    className?: string;
 }
 
 interface Suggestion {
@@ -31,7 +29,29 @@ interface Suggestion {
     insertText: string;
 }
 
-function buildSuggestions(fields: FieldConfig[]): Suggestion[] {
+// Base props
+interface BaseProps {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    className?: string;
+}
+
+// Props with fields (rich metadata)
+interface FieldsProps extends BaseProps {
+    fields: FieldConfig[];
+    variables?: never;
+}
+
+// Props with variables (simple string list)
+interface VariablesProps extends BaseProps {
+    variables: string[];
+    fields?: never;
+}
+
+export type TemplateInputProps = FieldsProps | VariablesProps;
+
+function buildSuggestions(fields?: FieldConfig[], variables?: string[]): Suggestion[] {
     const suggestions: Suggestion[] = [];
 
     // Add sequence (always available)
@@ -41,23 +61,37 @@ function buildSuggestions(fields: FieldConfig[]): Suggestion[] {
         insertText: "{sequence}",
     });
 
-    for (const field of fields) {
-        // Skip templated fields - they're computed, not source values
-        if (field.use_template) continue;
+    // Build from fields (rich mode)
+    if (fields) {
+        for (const field of fields) {
+            // Skip computed fields - they can't be used as source values in templates
+            if (field.use_template || field.source === 'computed') continue;
 
-        // Basic variable
-        suggestions.push({
-            text: field.key,
-            description: field.label,
-            insertText: `{${field.key}}`,
-        });
-
-        // .code modifier for fields with catalog_key
-        if (field.catalog_key) {
+            // Basic variable
             suggestions.push({
-                text: `${field.key}.code`,
-                description: `Code from ${field.catalog_key} catalog`,
-                insertText: `{${field.key}.code}`,
+                text: field.key,
+                description: field.label,
+                insertText: `{${field.key}}`,
+            });
+
+            // .code modifier for fields with catalog_key
+            if (field.catalog_key) {
+                suggestions.push({
+                    text: `${field.key}.code`,
+                    description: `Code from ${field.catalog_key} catalog`,
+                    insertText: `{${field.key}.code}`,
+                });
+            }
+        }
+    }
+
+    // Build from variables (simple mode)
+    if (variables) {
+        for (const v of variables) {
+            suggestions.push({
+                text: v,
+                description: `Insert {${v}}`,
+                insertText: `{${v}}`,
             });
         }
     }
@@ -65,120 +99,124 @@ function buildSuggestions(fields: FieldConfig[]): Suggestion[] {
     return suggestions;
 }
 
-export function TemplateInput({
-    value,
-    onChange,
-    fields,
-    placeholder = "e.g. {brand}-{color.code}",
-    className,
-}: TemplateInputProps) {
-    const [showSuggestions, setShowSuggestions] = React.useState(false);
-    const [filter, setFilter] = React.useState("");
-    const [selectedIndex, setSelectedIndex] = React.useState(0);
-    const inputRef = React.useRef<HTMLInputElement>(null);
-    const suggestionsRef = React.useRef<HTMLDivElement>(null);
+export function TemplateInput(props: TemplateInputProps) {
+    const { value, onChange, placeholder = "e.g. {brand}-{color:2}", className } = props;
+    const fields = 'fields' in props ? props.fields : undefined;
+    const variables = 'variables' in props ? props.variables : undefined;
 
-    const suggestions = React.useMemo(() => buildSuggestions(fields), [fields]);
+    const inputRef = React.useRef<HTMLInputElement>(null);
+    const dropdownRef = React.useRef<HTMLDivElement>(null);
+    const [showDropdown, setShowDropdown] = React.useState(false);
+    const [search, setSearch] = React.useState("");
+    const [cursorPosition, setCursorPosition] = React.useState(0);
+    const [highlightedIndex, setHighlightedIndex] = React.useState(0);
+
+    const suggestions = React.useMemo(
+        () => buildSuggestions(fields, variables),
+        [fields, variables]
+    );
 
     const filteredSuggestions = React.useMemo(() => {
-        if (!filter) return suggestions;
-        const lowerFilter = filter.toLowerCase();
+        if (!search) return suggestions;
+        const lowerSearch = search.toLowerCase();
         return suggestions.filter(
             (s) =>
-                s.text.toLowerCase().includes(lowerFilter) ||
-                s.description.toLowerCase().includes(lowerFilter)
+                s.text.toLowerCase().includes(lowerSearch) ||
+                s.description.toLowerCase().includes(lowerSearch)
         );
-    }, [suggestions, filter]);
+    }, [suggestions, search]);
 
-    // Find the last unclosed '{' position
-    const findOpenBrace = (text: string, cursorPos: number): number => {
-        let depth = 0;
-        for (let i = cursorPos - 1; i >= 0; i--) {
-            if (text[i] === "}") depth++;
-            if (text[i] === "{") {
-                if (depth === 0) return i;
-                depth--;
-            }
-        }
-        return -1;
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Handle input change
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newValue = e.target.value;
-        const cursorPos = e.target.selectionStart || 0;
+        const newCursor = e.target.selectionStart || 0;
         onChange(newValue);
+        setCursorPosition(newCursor);
 
-        // Check if we should show suggestions
-        const bracePos = findOpenBrace(newValue, cursorPos);
-        if (bracePos !== -1) {
-            const textAfterBrace = newValue.slice(bracePos + 1, cursorPos);
-            // Only show if no closing brace yet
-            if (!textAfterBrace.includes("}")) {
-                setFilter(textAfterBrace);
-                setShowSuggestions(true);
-                setSelectedIndex(0);
-                return;
-            }
+        // Show dropdown if typing after {
+        const beforeCursor = newValue.substring(0, newCursor);
+        const lastBrace = beforeCursor.lastIndexOf("{");
+        const lastClose = beforeCursor.lastIndexOf("}");
+
+        if (lastBrace > lastClose) {
+            setShowDropdown(true);
+            setSearch(beforeCursor.substring(lastBrace + 1));
+            setHighlightedIndex(0);
+        } else {
+            setShowDropdown(false);
+            setSearch("");
         }
-        setShowSuggestions(false);
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (!showSuggestions) return;
+    // Handle keyboard navigation
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!showDropdown) return;
 
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setSelectedIndex((i) =>
-                Math.min(i + 1, filteredSuggestions.length - 1)
-            );
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setSelectedIndex((i) => Math.max(i - 1, 0));
-        } else if (e.key === "Enter" || e.key === "Tab") {
-            if (filteredSuggestions.length > 0) {
+        switch (e.key) {
+            case "ArrowDown":
                 e.preventDefault();
-                insertSuggestion(filteredSuggestions[selectedIndex]);
-            }
-        } else if (e.key === "Escape") {
-            setShowSuggestions(false);
+                setHighlightedIndex((i) =>
+                    Math.min(i + 1, filteredSuggestions.length - 1)
+                );
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                setHighlightedIndex((i) => Math.max(i - 1, 0));
+                break;
+            case "Enter":
+            case "Tab":
+                if (filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    insertSuggestion(filteredSuggestions[highlightedIndex]);
+                }
+                break;
+            case "Escape":
+                setShowDropdown(false);
+                break;
         }
     };
 
+    // Insert suggestion at cursor
     const insertSuggestion = (suggestion: Suggestion) => {
-        const cursorPos = inputRef.current?.selectionStart || value.length;
-        const bracePos = findOpenBrace(value, cursorPos);
+        const beforeCursor = value.substring(0, cursorPosition);
+        const afterCursor = value.substring(cursorPosition);
+        const lastBrace = beforeCursor.lastIndexOf("{");
 
-        if (bracePos !== -1) {
-            // Replace from brace to cursor with the suggestion
-            const before = value.slice(0, bracePos);
-            const after = value.slice(cursorPos);
-            const newValue = before + suggestion.insertText + after;
-            onChange(newValue);
+        // Replace from { to cursor with the complete variable
+        const newValue =
+            beforeCursor.substring(0, lastBrace) + suggestion.insertText + afterCursor;
+        onChange(newValue);
+        setShowDropdown(false);
+        setSearch("");
 
-            // Move cursor after inserted text
-            setTimeout(() => {
-                const newPos = bracePos + suggestion.insertText.length;
-                inputRef.current?.setSelectionRange(newPos, newPos);
-            }, 0);
-        }
-
-        setShowSuggestions(false);
+        // Move cursor after the inserted variable
+        const newCursor = lastBrace + suggestion.insertText.length;
+        setTimeout(() => {
+            inputRef.current?.setSelectionRange(newCursor, newCursor);
+            inputRef.current?.focus();
+        }, 0);
     };
 
-    // Close suggestions when clicking outside
+    // Close dropdown on outside click
     React.useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (
-                suggestionsRef.current &&
-                !suggestionsRef.current.contains(e.target as Node) &&
-                !inputRef.current?.contains(e.target as Node)
+                dropdownRef.current &&
+                !dropdownRef.current.contains(e.target as Node) &&
+                inputRef.current &&
+                !inputRef.current.contains(e.target as Node)
             ) {
-                setShowSuggestions(false);
+                setShowDropdown(false);
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    // Track cursor position on click/focus
+    const handleSelect = (e: React.SyntheticEvent<HTMLInputElement>) => {
+        setCursorPosition(e.currentTarget.selectionStart || 0);
+    };
 
     return (
         <div className="relative">
@@ -186,17 +224,10 @@ export function TemplateInput({
                 ref={inputRef}
                 type="text"
                 value={value}
-                onChange={handleInputChange}
+                onChange={handleChange}
                 onKeyDown={handleKeyDown}
-                onFocus={() => {
-                    // Show suggestions if inside a brace
-                    const cursorPos = inputRef.current?.selectionStart || 0;
-                    const bracePos = findOpenBrace(value, cursorPos);
-                    if (bracePos !== -1) {
-                        setFilter(value.slice(bracePos + 1, cursorPos));
-                        setShowSuggestions(true);
-                    }
-                }}
+                onSelect={handleSelect}
+                onClick={handleSelect}
                 placeholder={placeholder}
                 className={cn(
                     "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
@@ -206,31 +237,67 @@ export function TemplateInput({
                 )}
             />
 
-            {showSuggestions && filteredSuggestions.length > 0 && (
+            {/* Autocomplete Dropdown */}
+            {showDropdown && (
                 <div
-                    ref={suggestionsRef}
-                    className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md border bg-popover shadow-lg"
+                    ref={dropdownRef}
+                    className="absolute z-50 top-full left-0 mt-1 w-full max-w-xs bg-popover border rounded-lg shadow-lg overflow-hidden"
                 >
-                    {filteredSuggestions.map((suggestion, index) => (
-                        <div
-                            key={suggestion.text}
-                            className={cn(
-                                "flex items-center justify-between px-3 py-2 cursor-pointer text-sm",
-                                index === selectedIndex
-                                    ? "bg-accent text-accent-foreground"
-                                    : "hover:bg-muted"
-                            )}
-                            onClick={() => insertSuggestion(suggestion)}
-                            onMouseEnter={() => setSelectedIndex(index)}
-                        >
-                            <code className="font-mono text-xs bg-muted px-1 rounded">
-                                {suggestion.insertText}
-                            </code>
-                            <span className="text-muted-foreground text-xs ml-2">
-                                {suggestion.description}
-                            </span>
+                    {/* Search Header */}
+                    <div className="p-2 border-b bg-muted/30">
+                        <div className="relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setHighlightedIndex(0);
+                                }}
+                                placeholder="Search variables..."
+                                className="w-full pl-7 pr-2 py-1.5 text-sm bg-transparent border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+                                autoFocus
+                            />
                         </div>
-                    ))}
+                    </div>
+
+                    {/* Variable List */}
+                    <div className="max-h-48 overflow-y-auto">
+                        {filteredSuggestions.length === 0 ? (
+                            <div className="p-3 text-sm text-muted-foreground text-center">
+                                No variables found
+                            </div>
+                        ) : (
+                            filteredSuggestions.map((suggestion, i) => (
+                                <button
+                                    key={suggestion.text}
+                                    type="button"
+                                    onClick={() => insertSuggestion(suggestion)}
+                                    onMouseEnter={() => setHighlightedIndex(i)}
+                                    className={cn(
+                                        "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
+                                        i === highlightedIndex
+                                            ? "bg-accent text-accent-foreground"
+                                            : "hover:bg-muted/50"
+                                    )}
+                                >
+                                    <Braces className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <code className="font-mono text-xs bg-muted px-1 rounded">
+                                        {suggestion.insertText}
+                                    </code>
+                                    <span className="text-muted-foreground text-xs ml-auto truncate max-w-[120px]">
+                                        {suggestion.description}
+                                    </span>
+                                </button>
+                            ))
+                        )}
+                    </div>
+
+                    {/* Footer Hint */}
+                    <div className="p-2 border-t bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-between">
+                        <span>↑↓ navigate • Enter to select</span>
+                        <span>:2 = first 2 chars</span>
+                    </div>
                 </div>
             )}
         </div>
