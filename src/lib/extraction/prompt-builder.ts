@@ -12,10 +12,12 @@ interface FieldConfig {
     key: string;
     label: string;
     required?: boolean;
+    source?: 'extracted' | 'computed';  // 'extracted' = from AI, 'computed' = virtual/templated
     catalog_key?: string;     // catalog key for matching during extraction
     use_template?: boolean;   // if true, value is computed from template
     template?: string;        // template string e.g. "{brand} - {name}"
     fallback?: string;        // default value if extraction returns empty
+    logic_type?: 'none' | 'template' | 'ai_enrichment';  // for computed fields
 }
 
 /**
@@ -88,14 +90,17 @@ export function buildSystemPrompt(
     options?: PromptOptions,
     catalogGuide?: string
 ): string {
-    const fieldDescriptions = fields.map(f => {
+    // Only include source fields (not computed/virtual) for AI extraction
+    const sourceFields = fields.filter(f => f.source !== 'computed');
+    
+    const fieldDescriptions = sourceFields.map(f => {
         let desc = `- ${f.key}: ${f.label}`;
         if (f.required) desc += ' [REQUIRED]';
         if (f.catalog_key) desc += ` [MATCH WITH CATALOG: ${f.catalog_key}]`;
         return desc;
     }).join('\n');
 
-    const jsonSchema = buildJsonSchema(fields, options?.enableReasoning);
+    const jsonSchema = buildJsonSchema(sourceFields, options?.enableReasoning);
 
     let prompt = `You are a product data extraction assistant. Extract product information from the provided document (PDF or image).
 

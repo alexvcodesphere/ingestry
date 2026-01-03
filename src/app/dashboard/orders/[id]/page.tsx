@@ -334,9 +334,21 @@ export default function OrderDetailPage() {
                                         .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
                                 }
                                 templatedFields={
-                                    ((order.metadata as { profile_fields?: Array<{ key: string; use_template?: boolean }> })?.profile_fields || [])
-                                        .filter(f => f.use_template)
+                                    ((order.metadata as { profile_fields?: Array<{ key: string; use_template?: boolean; source?: string; logic_type?: string; template?: string; ai_prompt?: string }> })?.profile_fields || [])
+                                        .filter(f => 
+                                            // New pattern: computed field with template or AI enrichment logic
+                                            (f.source === 'computed' && f.logic_type === 'template' && f.template) ||
+                                            (f.source === 'computed' && f.logic_type === 'ai_enrichment' && f.ai_prompt) ||
+                                            // Old pattern: use_template flag
+                                            f.use_template
+                                        )
                                         .map(f => f.key)
+                                }
+                                profileFields={
+                                    (order.metadata as { profile_fields?: Array<{ key: string; source?: string; logic_type?: string }> })?.profile_fields as import("@/types").FieldDefinition[] ?? []
+                                }
+                                activeExportConfig={
+                                    (order.metadata as { export_config?: import("@/types").ExportConfig })?.export_config
                                 }
                             />
                         ) : (

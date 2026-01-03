@@ -106,14 +106,14 @@ export async function resolveVariable(
 
         if (variable.useCode) {
             // Use lookup code (.code modifier)
-            // Map field key to lookup type using normalize_with mapping
-            const lookupType = context.lookupTypeMapping?.[variable.name] || variable.name;
+            // Map field key to lookup type using normalize_with mapping (case-insensitive)
+            const lookupType = getLookupType(variable.name, context.lookupTypeMapping);
             const lookupResult = await lookupCode(lookupType, rawValue, lookups);
             value = lookupResult !== '00' ? lookupResult : rawValue;
         } else if (variable.customKey) {
             // Use custom column from extra_data
-            // Map field key to lookup type using normalize_with mapping
-            const lookupType = context.lookupTypeMapping?.[variable.name] || variable.name;
+            // Map field key to lookup type using normalize_with mapping (case-insensitive)
+            const lookupType = getLookupType(variable.name, context.lookupTypeMapping);
             const extraData = await lookupExtraData(lookupType, rawValue, extraDataLookups);
             value = extraData[variable.customKey] !== undefined ? String(extraData[variable.customKey]) : '';
         } else {
@@ -137,11 +137,39 @@ export async function resolveVariable(
 }
 
 /**
+ * Get lookup type from mapping, case-insensitive
+ */
+function getLookupType(name: string, mapping?: Record<string, string>): string {
+    if (!mapping) return name;
+    // Direct match first
+    if (mapping[name]) return mapping[name];
+    // Case-insensitive fallback
+    const lowerName = name.toLowerCase();
+    for (const [key, value] of Object.entries(mapping)) {
+        if (key.toLowerCase() === lowerName) {
+            return value;
+        }
+    }
+    return name;
+}
+
+/**
  * Get a value from the template context by variable name
- * No special handling - returns extracted value or empty string.
+ * Case-insensitive lookup to handle field name mismatches.
  */
 function getContextValue(name: string, context: TemplateContext): string {
-    return context.values[name] || '';
+    // Direct match first
+    if (context.values[name] !== undefined) {
+        return context.values[name];
+    }
+    // Case-insensitive fallback
+    const lowerName = name.toLowerCase();
+    for (const [key, value] of Object.entries(context.values)) {
+        if (key.toLowerCase() === lowerName) {
+            return value;
+        }
+    }
+    return '';
 }
 
 /**

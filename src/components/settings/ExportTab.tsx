@@ -5,7 +5,8 @@
  * Part of the unified profile editor (Schema Master pattern)
  */
 
-import { useState } from "react";
+import { useState, useMemo, useCallback, memo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,137 @@ const DEFAULT_MAPPING: FieldMapping = {
     default_value: "",
 };
 
+/** Virtualized Field Mappings List - renders only visible items */
+interface VirtualizedMappingsProps {
+    mappings: FieldMapping[];
+    fields: FieldDefinition[];
+    validSourceKeys: Set<string>;
+    onMappingChange: (idx: number, updates: Partial<FieldMapping>) => void;
+    onRemoveMapping: (idx: number) => void;
+    onAddMapping: () => void;
+}
+
+function VirtualizedMappings({
+    mappings,
+    fields,
+    validSourceKeys,
+    onMappingChange,
+    onRemoveMapping,
+    onAddMapping,
+}: VirtualizedMappingsProps) {
+    const parentRef = useRef<HTMLDivElement>(null);
+    
+    const virtualizer = useVirtualizer({
+        count: mappings.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => 72, // row height + gap
+        overscan: 5,
+    });
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Field Mappings ({mappings.length})</Label>
+                <Button variant="outline" size="sm" onClick={onAddMapping} className="h-8 text-xs gap-1">
+                    <Plus className="h-3.5 w-3.5" />
+                    Add
+                </Button>
+            </div>
+            <div
+                ref={parentRef}
+                className="max-h-56 overflow-y-auto pr-1"
+            >
+                <div
+                    style={{
+                        height: `${virtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                    }}
+                >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                        const idx = virtualRow.index;
+                        const mapping = mappings[idx];
+                        const isInvalid = mapping.source && !validSourceKeys.has(mapping.source);
+                        const sourceField = fields.find(f => f.key === mapping.source);
+                        
+                        return (
+                            <div
+                                key={idx}
+                                className="pb-3"
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: `${virtualRow.size}px`,
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                            >
+                                <div
+                                    className={`flex items-center gap-3 p-2.5 border rounded-lg text-sm ${
+                                        isInvalid 
+                                            ? "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30" 
+                                            : "border-border"
+                                    }`}
+                                >
+                                    {sourceField && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                            sourceField.source === 'computed'
+                                                ? 'bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400'
+                                                : 'bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400'
+                                        }`}>
+                                            {sourceField.source === 'computed' ? 'V' : 'S'}
+                                        </span>
+                                    )}
+                                    <Select
+                                        value={mapping.source || "_custom"}
+                                        onValueChange={(value) =>
+                                            onMappingChange(idx, { source: value === "_custom" ? "" : value })
+                                        }
+                                    >
+                                        <SelectTrigger className="w-32 h-8 text-xs">
+                                            <SelectValue placeholder="Source" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="_custom">Custom...</SelectItem>
+                                            {fields.map((f) => (
+                                                <SelectItem key={f.key} value={f.key}>
+                                                    {f.source === 'computed' ? '○ ' : '● '}{f.label || f.key}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                                    <Input
+                                        value={mapping.target}
+                                        onChange={(e) => onMappingChange(idx, { target: e.target.value })}
+                                        placeholder="target_column"
+                                        className="flex-1 h-8 text-xs min-w-0"
+                                    />
+                                    <Input
+                                        value={mapping.default_value || ""}
+                                        onChange={(e) => onMappingChange(idx, { default_value: e.target.value })}
+                                        placeholder="Default"
+                                        className="w-20 h-8 text-xs shrink-0"
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => onRemoveMapping(idx)}
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 interface ExportTabProps {
     exportConfigs: ExportConfig[];
     fields: FieldDefinition[];
@@ -56,21 +188,27 @@ export function ExportTab({
     const [activeConfigIdx, setActiveConfigIdx] = useState(0);
     const activeConfig = exportConfigs[activeConfigIdx];
 
-    const allFieldKeys = fields.map((f) => f.key).filter(Boolean);
-    const validSourceKeys = new Set(allFieldKeys);
-
-    const mappedSources = new Set(
-        activeConfig?.field_mappings.map((m) => m.source).filter(Boolean) || []
+    // Memoize derived values
+    const allFieldKeys = useMemo(() => 
+        fields.map((f) => f.key).filter(Boolean),
+        [fields]
     );
-    const unmappedFields = fields.filter(
-        (f) => f.key && !mappedSources.has(f.key)
+    const validSourceKeys = useMemo(() => new Set(allFieldKeys), [allFieldKeys]);
+
+    const mappedSources = useMemo(() => 
+        new Set(activeConfig?.field_mappings.map((m) => m.source).filter(Boolean) || []),
+        [activeConfig?.field_mappings]
+    );
+    const unmappedFields = useMemo(() => 
+        fields.filter((f) => f.key && !mappedSources.has(f.key)),
+        [fields, mappedSources]
     );
 
-    const getInvalidMappings = (config: ExportConfig) => {
+    const getInvalidMappings = useCallback((config: ExportConfig) => {
         return config.field_mappings
             .map((m, idx) => ({ ...m, idx }))
             .filter((m) => m.source && !validSourceKeys.has(m.source));
-    };
+    }, [validSourceKeys]);
 
     const handleAddConfig = () => {
         const newConfig: ExportConfig = {
@@ -314,79 +452,15 @@ export function ExportTab({
                         </div>
                     )}
 
-                    {/* Field Mappings */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium">Field Mappings</Label>
-                            <Button variant="outline" size="sm" onClick={() => handleAddMapping()} className="h-8 text-xs gap-1">
-                                <Plus className="h-3.5 w-3.5" />
-                                Add
-                            </Button>
-                        </div>
-                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                            {activeConfig.field_mappings.map((mapping, idx) => {
-                                const isInvalid = mapping.source && !validSourceKeys.has(mapping.source);
-                                const sourceField = fields.find(f => f.key === mapping.source);
-                                return (
-                                    <div
-                                        key={idx}
-                                        className={`flex items-center gap-2 p-2 rounded-lg text-sm ${
-                                            isInvalid 
-                                                ? "bg-amber-50/50 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-300 dark:ring-amber-700" 
-                                                : "bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-900/30 ring-1 ring-inset ring-slate-200/50 dark:ring-slate-700/50"
-                                        }`}
-                                    >
-                                        {sourceField && <SourceBadge field={sourceField} />}
-                                        <Select
-                                            value={mapping.source || "_custom"}
-                                            onValueChange={(value) =>
-                                                handleMappingChange(idx, {
-                                                    source: value === "_custom" ? "" : value,
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger className="w-32 h-8 text-xs">
-                                                <SelectValue placeholder="Source" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="_custom">Custom...</SelectItem>
-                                                {fields.map((f) => (
-                                                    <SelectItem key={f.key} value={f.key}>
-                                                        {f.source === 'computed' ? '○ ' : '● '}{f.label || f.key}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50" />
-                                        <Input
-                                            value={mapping.target}
-                                            onChange={(e) =>
-                                                handleMappingChange(idx, { target: e.target.value })
-                                            }
-                                            placeholder="target_column"
-                                            className="flex-1 h-8 text-xs"
-                                        />
-                                        <Input
-                                            value={mapping.default_value || ""}
-                                            onChange={(e) =>
-                                                handleMappingChange(idx, { default_value: e.target.value })
-                                            }
-                                            placeholder="Default"
-                                            className="w-20 h-8 text-xs"
-                                        />
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => handleRemoveMapping(idx)}
-                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                        >
-                                            <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    {/* Field Mappings - Virtualized */}
+                    <VirtualizedMappings
+                        mappings={activeConfig.field_mappings}
+                        fields={fields}
+                        validSourceKeys={validSourceKeys}
+                        onMappingChange={handleMappingChange}
+                        onRemoveMapping={handleRemoveMapping}
+                        onAddMapping={handleAddMapping}
+                    />
                 </div>
             ) : (
                 <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">

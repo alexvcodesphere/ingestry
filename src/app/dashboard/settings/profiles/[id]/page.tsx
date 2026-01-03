@@ -16,7 +16,7 @@ import { IntakeTab } from "@/components/settings/IntakeTab";
 import { TransformTab } from "@/components/settings/TransformTab";
 import { ExportTab } from "@/components/settings/ExportTab";
 import { ProfilePreviewTable } from "@/components/settings/ProfilePreviewTable";
-import { ArrowLeft, FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot } from "lucide-react";
+import { ArrowLeft, FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy } from "lucide-react";
 
 interface LookupOption {
     field_key: string;
@@ -175,10 +175,14 @@ export default function ProfileEditorPage() {
             };
 
             if (isNew) {
-                const { error } = await supabase
+                const { data, error } = await supabase
                     .from("input_profiles")
-                    .insert(payload);
+                    .insert(payload)
+                    .select("id")
+                    .single();
                 if (error) throw error;
+                // Update URL to the new profile ID without navigating away
+                window.history.replaceState(null, "", `/dashboard/settings/profiles/${data.id}`);
             } else {
                 const { error } = await supabase
                     .from("input_profiles")
@@ -186,8 +190,9 @@ export default function ProfileEditorPage() {
                     .eq("id", profileId);
                 if (error) throw error;
             }
+            // Update initial form data to reset dirty state
+            initialFormData.current = JSON.stringify(formData);
             setIsDirty(false);
-            router.push("/dashboard/settings/processing");
         } catch (error) {
             console.error("Failed to save profile:", error);
             alert("Failed to save profile");
@@ -244,6 +249,43 @@ export default function ProfileEditorPage() {
                     >
                         Cancel
                     </button>
+                    {!isNew && (
+                        <Button 
+                            variant="outline" 
+                            onClick={async () => {
+                                setIsSaving(true);
+                                const supabase = createClient();
+                                try {
+                                    const { data, error } = await supabase
+                                        .from("input_profiles")
+                                        .insert({
+                                            name: `${formData.name} (Copy)`,
+                                            description: formData.description || null,
+                                            fields: formData.fields,
+                                            prompt_additions: formData.prompt_additions || null,
+                                            sku_template: formData.sku_template || null,
+                                            generate_sku: formData.generate_sku,
+                                            export_configs: formData.export_configs,
+                                            default_export_config_idx: formData.default_export_config_idx,
+                                        })
+                                        .select("id")
+                                        .single();
+                                    if (error) throw error;
+                                    router.push(`/dashboard/settings/profiles/${data.id}`);
+                                } catch (error) {
+                                    console.error("Failed to duplicate profile:", error);
+                                    alert("Failed to create copy");
+                                } finally {
+                                    setIsSaving(false);
+                                }
+                            }} 
+                            disabled={isSaving} 
+                            className="gap-1.5"
+                        >
+                            <Copy className="h-4 w-4" />
+                            Save as New
+                        </Button>
+                    )}
                     <Button onClick={handleSave} disabled={isSaving || !formData.name} className="gap-1.5 min-w-[120px]">
                         {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {isSaving ? "Saving..." : "Save Profile"}

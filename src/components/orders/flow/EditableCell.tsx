@@ -2,7 +2,7 @@
 
 /**
  * Editable Cell Component
- * Provides click-to-edit behavior for table cells
+ * Provides click-to-edit behavior for table cells.
  */
 
 import { useState, useRef, useEffect } from "react";

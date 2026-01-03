@@ -13,6 +13,7 @@ import {
     approveAllLineItems,
 } from '@/lib/services/draft-order.service';
 import { evaluateTemplate, type TemplateContext } from '@/lib/services/template-engine';
+import { enrichProducts, type EnrichmentField } from '@/lib/services/ai-enrichment';
 import { prefetchCatalog, clearCatalogCache, getCatalogCache } from '@/lib/services/catalog-reconciler';
 import type { NormalizedProduct } from '@/types';
 
@@ -208,14 +209,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 );
             }
 
-            // Get templated fields from profile
+            // Get templated fields from profile (support old and new patterns)
             const templatedFields = (profile.fields || []).filter(
-                (f: { use_template?: boolean; template?: string }) => f.use_template && f.template
+                (f: { use_template?: boolean; template?: string; source?: string; logic_type?: string }) => 
+                    // New pattern: computed field with template logic
+                    (f.source === 'computed' && f.logic_type === 'template' && f.template) ||
+                    // Old pattern: use_template flag
+                    (f.use_template && f.template)
             );
 
-            if (templatedFields.length === 0) {
+            // Get AI enrichment fields from profile
+            const aiEnrichmentFields = (profile.fields || []).filter(
+                (f: { source?: string; logic_type?: string; ai_prompt?: string }) => 
+                    f.source === 'computed' && f.logic_type === 'ai_enrichment' && f.ai_prompt
+            );
+
+            if (templatedFields.length === 0 && aiEnrichmentFields.length === 0) {
                 return NextResponse.json(
-                    { success: false, error: 'No templated fields in profile' },
+                    { success: false, error: 'No computed fields in profile' },
                     { status: 400 }
                 );
             }
@@ -273,7 +284,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
-            const batchUpdates = [];
+            const batchUpdates: Array<{
+                id: string;
+                normalized_data: NormalizedProduct;
+                user_modified: boolean;
+                status: string;
+            }> = [];
             for (const item of items) {
                 const data = item.normalized_data as NormalizedProduct;
                 if (!data) continue;
@@ -310,6 +326,60 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
+            // --- AI ENRICHMENT: Process ai_enrichment fields ---
+            if (aiEnrichmentFields.length > 0) {
+                const geminiKey = process.env.GEMINI_API_KEY;
+                if (geminiKey) {
+                    const enrichmentFieldsInput: EnrichmentField[] = aiEnrichmentFields.map((f: { key: string; label: string; ai_prompt: string; fallback?: string }) => ({
+                        key: f.key,
+                        label: f.label,
+                        ai_prompt: f.ai_prompt,
+                        fallback: f.fallback,
+                    }));
+
+                    // Prepare products for enrichment (use current data from batchUpdates if available)
+                    const productsToEnrich = items.map(item => {
+                        const existing = batchUpdates.find(u => u.id === item.id);
+                        return {
+                            id: item.id,
+                            data: existing ? existing.normalized_data : (item.normalized_data as Record<string, unknown> || {}),
+                        };
+                    });
+
+                    try {
+                        const enrichmentResults = await enrichProducts(enrichmentFieldsInput, productsToEnrich, geminiKey);
+                        
+                        // Merge enrichment results into batchUpdates
+                        for (const result of enrichmentResults) {
+                            const existingIdx = batchUpdates.findIndex(u => u.id === result.id);
+                            if (existingIdx >= 0) {
+                                // Merge with existing update
+                                batchUpdates[existingIdx].normalized_data = {
+                                    ...batchUpdates[existingIdx].normalized_data,
+                                    ...result.enrichments,
+                                };
+                            } else {
+                                // Create new update entry
+                                const item = items.find(i => i.id === result.id);
+                                if (item) {
+                                    batchUpdates.push({
+                                        id: result.id,
+                                        normalized_data: { ...(item.normalized_data as NormalizedProduct), ...result.enrichments },
+                                        user_modified: true,
+                                        status: 'validated',
+                                    });
+                                }
+                            }
+                        }
+                    } catch (enrichError) {
+                        console.error('[AI Enrichment] Batch enrichment failed:', enrichError);
+                        // Continue with template-only updates
+                    }
+                } else {
+                    console.warn('[AI Enrichment] GEMINI_API_KEY not configured, skipping AI enrichment');
+                }
+            }
+
             // --- BATCH UPDATE: Use individual updates (upsert requires all non-null columns) ---
             if (batchUpdates.length > 0) {
                 const updatePromises = batchUpdates.map(update => 
@@ -334,9 +404,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
             clearCatalogCache();
 
+            const allFieldKeys = [
+                ...templatedFields.map((f: { key: string }) => f.key),
+                ...aiEnrichmentFields.map((f: { key: string }) => f.key),
+            ];
+
             return NextResponse.json({
                 success: true,
-                data: { regeneratedCount: batchUpdates.length, fieldsUpdated: templatedFields.map((f: { key: string }) => f.key) },
+                data: { regeneratedCount: batchUpdates.length, fieldsUpdated: allFieldKeys },
             });
         }
 

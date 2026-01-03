@@ -42,10 +42,11 @@ import {
 } from "@/components/ui/tooltip";
 import { AlertTriangle } from "lucide-react";
 import { EditableCell } from "./EditableCell";
-import { StatusBadge, ValidationErrors } from "./StatusBadge";
-import type { DraftLineItem, NormalizedProduct, LineItemStatus } from "@/types";
+import { StatusBadge } from "./StatusBadge";
+import type { DraftLineItem, NormalizedProduct, LineItemStatus, FieldDefinition, ExportConfig } from "@/types";
 import { FloatingActionBar, type QuickSetField } from "./FloatingActionBar";
 import { SparkToggleButton } from "./IngestrySpark";
+import { SourceLegend } from "@/components/ui/SourceTooltip";
 
 /** Type for AI uncertainty flags stored in _needs_checking */
 interface NeedsCheckingFlag {
@@ -70,6 +71,10 @@ interface DraftOrderGridProps {
     fieldLabels?: Record<string, string>;
     /** Field keys that use templates (show regenerate button) */
     templatedFields?: string[];
+    /** Full field definitions for lineage styling */
+    profileFields?: FieldDefinition[];
+    /** Active export config for mapping status */
+    activeExportConfig?: ExportConfig;
 }
 
 // Fields that should be treated as numbers
@@ -99,6 +104,8 @@ export function DraftOrderGrid({
     isSubmitting = false,
     fieldLabels = {},
     templatedFields = [],
+    profileFields = [],
+    activeExportConfig,
 }: DraftOrderGridProps) {
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [updatingRows, setUpdatingRows] = useState<Set<string>>(new Set());
@@ -122,12 +129,18 @@ export function DraftOrderGrid({
                 }
             }
         }
-        return Array.from(fieldSet).map((key) => ({
-            key,
-            label: fieldLabels[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
-            type: NUMBER_FIELDS.has(key) ? "number" : "text",
-        }));
-    }, [lineItems, fieldLabels]);
+        return Array.from(fieldSet).map((key) => {
+            // Find field definition to determine source type
+            const fieldDef = profileFields.find(f => f.key === key);
+            return {
+                key,
+                label: fieldLabels[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+                type: NUMBER_FIELDS.has(key) ? "number" : "text",
+                sourceType: fieldDef?.source || 'extracted',
+                logicType: fieldDef?.logic_type,
+            };
+        });
+    }, [lineItems, fieldLabels, profileFields]);
 
     // Debug: Log discovered fields (check browser console)
     useEffect(() => {
@@ -206,15 +219,57 @@ export function DraftOrderGrid({
                 const data = row.normalized_data as unknown as Record<string, unknown>;
                 return data?.[field.key] ?? "";
             },
-            header: ({ column }) => (
-                <button
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                >
-                    {field.label}
-                    {column.getIsSorted() === "asc" ? " ↑" : column.getIsSorted() === "desc" ? " ↓" : ""}
-                </button>
-            ),
+            header: ({ column }) => {
+                // Determine if this field is mapped to export
+                const isMapped = activeExportConfig?.field_mappings?.some(
+                    m => m.source === field.key
+                ) ?? false;
+                const isVirtual = field.sourceType === 'computed';
+                
+                // Check if any row has validation errors for this field
+                const hasErrors = lineItems.some(item => 
+                    item.validation_errors?.some(e => e.field === field.key)
+                );
+                
+                return (
+                    <button
+                        className="flex items-center gap-1.5 hover:text-foreground transition-colors w-full text-left"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    >
+                        {/* Badge matching TransformTab style */}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide shrink-0 ${
+                            isVirtual
+                                ? 'bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400'
+                                : 'bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400'
+                        }`}>
+                            {isVirtual ? 'V' : 'S'}
+                        </span>
+                        <span>{field.label}</span>
+                        {/* Show error indicator if any row has validation errors in this column */}
+                        {hasErrors && (
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                        <p className="text-xs">Some rows have validation errors</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        )}
+                        {/* Show warning for unmapped fields - only if no errors to avoid clutter */}
+                        {!hasErrors && !isMapped && activeExportConfig && (
+                            <span className="text-amber-500 text-[10px] shrink-0" title="Not mapped to export">⚠</span>
+                        )}
+                        {column.getIsSorted() === "asc" ? " ↑" : column.getIsSorted() === "desc" ? " ↓" : ""}
+                    </button>
+                );
+            },
+            // Store source type in meta for cell background styling
+            meta: {
+                sourceType: field.sourceType,
+            },
             enableSorting: true,
             cell: ({ row }: { row: { original: DraftLineItem } }) => {
                 const item = row.original;
@@ -292,7 +347,7 @@ export function DraftOrderGrid({
             },
             size: field.key === "name" ? 200 : field.key === "sku" ? 180 : 100,
         }));
-    }, [editableColumns, handleCellUpdate, updatingRows, templatedFields, onRegenerateTemplates, handleRegenerateTemplates, isRegenerating, regeneratingIds]);
+    }, [editableColumns, handleCellUpdate, updatingRows, templatedFields, onRegenerateTemplates, handleRegenerateTemplates, isRegenerating, regeneratingIds, activeExportConfig]);
 
     // Combine static columns with dynamic data columns
     const columns = useMemo<ColumnDef<DraftLineItem>[]>(
@@ -360,14 +415,6 @@ export function DraftOrderGrid({
                 size: 40,
             },
             ...dataColumns,
-            {
-                id: "errors",
-                header: "Issues",
-                cell: ({ row }) => (
-                    <ValidationErrors errors={row.original.validation_errors || []} />
-                ),
-                size: 150,
-            },
         ],
         [dataColumns, rowSelection]
     );
@@ -411,6 +458,9 @@ export function DraftOrderGrid({
                     <span className="text-muted-foreground">
                         {stats.approved} approved, {stats.validated} validated, {stats.error} with errors
                     </span>
+                    <span className="border-l pl-4">
+                        <SourceLegend compact />
+                    </span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -434,13 +484,25 @@ export function DraftOrderGrid({
                 <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
                             <TableRow key={headerGroup.id}>
-                                {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id} style={{ width: header.column.getSize() }}>
-                                        {header.isPlaceholder
-                                            ? null
-                                            : flexRender(header.column.columnDef.header, header.getContext())}
-                                    </TableHead>
-                                ))}
+                                {headerGroup.headers.map((header) => {
+                                    const meta = header.column.columnDef.meta as { sourceType?: string } | undefined;
+                                    const bgClass = meta?.sourceType === 'computed'
+                                        ? 'bg-purple-50/50 dark:bg-purple-950/30'
+                                        : meta?.sourceType === 'extracted'
+                                            ? 'bg-blue-50/50 dark:bg-blue-950/30'
+                                            : '';
+                                    return (
+                                        <TableHead 
+                                            key={header.id} 
+                                            style={{ width: header.column.getSize() }}
+                                            className={bgClass}
+                                        >
+                                            {header.isPlaceholder
+                                                ? null
+                                                : flexRender(header.column.columnDef.header, header.getContext())}
+                                        </TableHead>
+                                    );
+                                })}
                             </TableRow>
                         ))}
                     </TableHeader>
@@ -451,18 +513,24 @@ export function DraftOrderGrid({
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
                                     className={
-                                        row.original.status === "error"
-                                            ? "bg-red-50/50 dark:bg-red-950/20"
-                                            : row.original.status === "approved"
-                                                ? "bg-green-50/50 dark:bg-green-950/20"
-                                                : undefined
+                                        row.original.status === "approved"
+                                            ? "bg-green-50/50 dark:bg-green-950/20"
+                                            : undefined
                                     }
                                 >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
+                                    {row.getVisibleCells().map((cell) => {
+                                        const meta = cell.column.columnDef.meta as { sourceType?: string } | undefined;
+                                        const bgClass = meta?.sourceType === 'computed'
+                                            ? 'bg-purple-50/30 dark:bg-purple-950/20'
+                                            : meta?.sourceType === 'extracted'
+                                                ? 'bg-blue-50/30 dark:bg-blue-950/20'
+                                                : '';
+                                        return (
+                                            <TableCell key={cell.id} className={bgClass}>
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        );
+                                    })}
                                 </TableRow>
                             ))
                         ) : (

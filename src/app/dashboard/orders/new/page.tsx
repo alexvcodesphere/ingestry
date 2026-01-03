@@ -22,6 +22,7 @@ import {
 import type { ShopSystem, ExportConfig } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ProcessingProfile {
     id: string;
@@ -46,6 +47,7 @@ export default function NewOrderPage() {
     // Processing profile state
     const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+    const [autoComputedFields, setAutoComputedFields] = useState(true);
 
     // Get selected profile
     const selectedProfile = profiles.find(p => p.id === selectedProfileId);
@@ -119,6 +121,9 @@ export default function NewOrderPage() {
             }
             if (orderName.trim()) {
                 formData.append("order_name", orderName.trim());
+            }
+            if (!autoComputedFields) {
+                formData.append("skip_computed", "true");
             }
 
             setProgress("AI Processing...");
@@ -327,6 +332,21 @@ export default function NewOrderPage() {
                                 </p>
                             </div>
                         )}
+
+                        {/* Auto-compute option */}
+                        <div className="flex items-center gap-3 py-2">
+                            <Checkbox
+                                id="autoComputed"
+                                checked={autoComputedFields}
+                                onCheckedChange={(checked) => setAutoComputedFields(checked === true)}
+                            />
+                            <label htmlFor="autoComputed" className="text-sm cursor-pointer">
+                                <span className="font-medium">Auto-generate computed fields</span>
+                                <p className="text-xs text-muted-foreground">
+                                    Run templates and AI enrichment during import
+                                </p>
+                            </label>
+                        </div>
 
                         {/* Actions */}
                         <div className="flex gap-3">

@@ -9,6 +9,8 @@ import { createClient } from '@/lib/supabase/server';
 import { getDraftOrders } from '@/lib/services/draft-order.service';
 import { processOrder } from '@/lib/modules/processing/pipeline';
 import { extractProducts, getPromptForProfile, type VisionModel, type ExtractedProductWithMeta } from '@/lib/extraction';
+import { evaluateTemplate, loadCodeLookups, loadExtraDataLookups, type TemplateContext } from '@/lib/services/template-engine';
+import { enrichProducts, type EnrichmentField } from '@/lib/services/ai-enrichment';
 import type { DraftOrderStatus, ShopSystem, RawExtractedProduct } from '@/types';
 
 /**
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
         const brandId = formData.get('brand_id') as string | null;
         const profileId = formData.get('profile_id') as string | null;
         const orderName = formData.get('order_name') as string | null;
+        const skipComputed = formData.get('skip_computed') === 'true';
 
         // Validate required fields
         if (!file) {
@@ -235,6 +238,130 @@ export async function POST(request: NextRequest) {
                     match_catalogue: false,
                 },
             }, profile as Parameters<typeof processOrder>[2]);
+
+            // --- AUTO-COMPUTE: Process computed fields unless skipped ---
+            if (!skipComputed && draftOrder.line_items && draftOrder.line_items.length > 0) {
+                const templatedFields = (profile.fields || []).filter(
+                    (f: { source?: string; logic_type?: string; template?: string; use_template?: boolean }) =>
+                        (f.source === 'computed' && f.logic_type === 'template' && f.template) ||
+                        (f.use_template && f.template)
+                );
+                
+                const aiEnrichmentFields = (profile.fields || []).filter(
+                    (f: { source?: string; logic_type?: string; ai_prompt?: string }) =>
+                        f.source === 'computed' && f.logic_type === 'ai_enrichment' && f.ai_prompt
+                );
+
+                if (templatedFields.length > 0 || aiEnrichmentFields.length > 0) {
+                    console.log(`[API] Auto-computing ${templatedFields.length} template + ${aiEnrichmentFields.length} AI fields`);
+                    
+                    // Build lookup maps for templates
+                    const codeLookups = await loadCodeLookups();
+                    const extraDataLookups = await loadExtraDataLookups();
+                    
+                    const lookupTypeMapping: Record<string, string> = {};
+                    for (const field of profile.fields || []) {
+                        if ((field as { catalog_key?: string }).catalog_key) {
+                            lookupTypeMapping[field.key] = (field as { catalog_key: string }).catalog_key;
+                        }
+                    }
+
+                    // Process each line item
+                    const batchUpdates: Array<{ id: string; normalized_data: Record<string, unknown> }> = [];
+                    
+                    for (const item of draftOrder.line_items) {
+                        const data = item.normalized_data as Record<string, unknown>;
+                        if (!data) continue;
+
+                        const productValues: Record<string, string> = {};
+                        for (const [key, value] of Object.entries(data)) {
+                            productValues[key] = value !== null && value !== undefined ? String(value) : '';
+                        }
+
+                        const context: TemplateContext = {
+                            values: productValues,
+                            sequence: item.line_number || 1,
+                            lookupTypeMapping,
+                        };
+
+                        const updates: Record<string, string> = {};
+                        
+                        // Process template fields
+                        for (const field of templatedFields) {
+                            try {
+                                const newValue = await evaluateTemplate(field.template!, context, codeLookups, extraDataLookups);
+                                updates[field.key] = newValue;
+                            } catch (err) {
+                                console.error(`[Auto-Compute] Template ${field.key} failed:`, err);
+                            }
+                        }
+
+                        if (Object.keys(updates).length > 0) {
+                            batchUpdates.push({
+                                id: item.id,
+                                normalized_data: { ...data, ...updates },
+                            });
+                        }
+                    }
+
+                    // Process AI enrichment fields (batch)
+                    if (aiEnrichmentFields.length > 0 && process.env.GEMINI_API_KEY) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const enrichmentFieldsInput: EnrichmentField[] = (aiEnrichmentFields as any[]).map(
+                            (f) => ({
+                                key: f.key as string,
+                                label: f.label as string,
+                                ai_prompt: f.ai_prompt as string,
+                                fallback: f.fallback as string | undefined,
+                            })
+                        );
+
+                        const productsToEnrich = draftOrder.line_items.map(item => {
+                            const existing = batchUpdates.find(u => u.id === item.id);
+                            return {
+                                id: item.id,
+                                data: existing ? existing.normalized_data : (item.normalized_data as Record<string, unknown> || {}),
+                            };
+                        });
+
+                        try {
+                            const enrichmentResults = await enrichProducts(enrichmentFieldsInput, productsToEnrich, process.env.GEMINI_API_KEY);
+                            
+                            for (const result of enrichmentResults) {
+                                const existingIdx = batchUpdates.findIndex(u => u.id === result.id);
+                                if (existingIdx >= 0) {
+                                    batchUpdates[existingIdx].normalized_data = {
+                                        ...batchUpdates[existingIdx].normalized_data,
+                                        ...result.enrichments,
+                                    };
+                                } else {
+                                    const item = draftOrder.line_items.find(i => i.id === result.id);
+                                    if (item) {
+                                        batchUpdates.push({
+                                            id: result.id,
+                                            normalized_data: { ...(item.normalized_data as Record<string, unknown>), ...result.enrichments },
+                                        });
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error('[Auto-Compute] AI enrichment failed:', err);
+                        }
+                    }
+
+                    // Save computed values
+                    if (batchUpdates.length > 0) {
+                        const updatePromises = batchUpdates.map(update =>
+                            supabase
+                                .from('draft_line_items')
+                                .update({ normalized_data: update.normalized_data })
+                                .eq('id', update.id)
+                        );
+                        await Promise.all(updatePromises);
+                        console.log(`[API] Auto-computed ${batchUpdates.length} items`);
+                    }
+                }
+            }
 
             // Update job as completed
             await supabase
