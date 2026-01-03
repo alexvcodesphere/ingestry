@@ -110,7 +110,7 @@ export function TransformTab({
     return (
         <div className="space-y-5">
             {/* Add Computed Field */}
-            <div className="p-4 border border-dashed rounded-lg bg-muted/30">
+            <div className="p-4 border border-dashed rounded-lg bg-muted/30 ring-0">
                 <div className="flex items-center gap-2 mb-2">
                     <Wand2 className="h-5 w-5 text-purple-500" />
                     <Label className="text-sm font-medium">Create Virtual Field</Label>

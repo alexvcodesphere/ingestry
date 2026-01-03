@@ -8,22 +8,22 @@ Ingestry is a Next.js application built to streamline fashion retail workflows. 
 
 ### Core Features
 
-*   **AI-Powered PDF Extraction**: Utilizes GPT-4o Vision to extract product data from order confirmations.
-*   **Dynamic Processing Profiles**: Allows for configurable field extraction, normalization, and SKU generation.
-*   **Lookup-Based Normalization**: Employs fuzzy matching with aliases for various product attributes.
-*   **Template-Based SKU Generation**: Provides configurable SKU templates with variable substitution.
-*   **Multi-Shop Export**: Includes adapters for Shopware 6, Xentral ERP, and Shopify.
-*   **Multi-Tenant Architecture**: Ensures complete tenant isolation using Supabase Row-Level Security.
+- **AI-Powered PDF Extraction**: Utilizes GPT-4o Vision to extract product data from order confirmations.
+- **Dynamic Processing Profiles**: Allows for configurable field extraction, normalization, and SKU generation.
+- **Lookup-Based Normalization**: Employs fuzzy matching with aliases for various product attributes.
+- **Template-Based SKU Generation**: Provides configurable SKU templates with variable substitution.
+- **Multi-Shop Export**: Includes adapters for Shopware 6, Xentral ERP, and Shopify.
+- **Multi-Tenant Architecture**: Ensures complete tenant isolation using Supabase Row-Level Security.
 
 ### Tech Stack
 
-*   **Framework**: Next.js 16 (App Router)
-*   **Language**: TypeScript
-*   **Styling**: Tailwind CSS 4
-*   **Components**: shadcn/ui
-*   **Database**: Supabase (PostgreSQL)
-*   **AI**: OpenAI GPT-4o Vision
-*   **Document Analysis**: Azure Document Intelligence
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS 4
+- **Components**: shadcn/ui
+- **Database**: Supabase (PostgreSQL)
+- **AI**: OpenAI GPT-4o Vision
+- **Document Analysis**: Azure Document Intelligence
 
 ## Building and Running
 
@@ -76,3 +76,18 @@ npm run lint
 ### Code Style
 
 The project uses Tailwind CSS for styling, with components from shadcn/ui. Please adhere to the existing coding style and conventions when contributing to the project.
+
+### Styling & Design System
+
+Custom DLS extending shadcn/ui with "Modern App" aesthetics:
+
+#### The "Frame" (Surfaces)
+
+- **Cards**: `border border-border/60 ring-1 ring-inset ring-border/50 rounded-xl`
+- **Nested Areas**: `bg-muted/30` or `bg-muted/50`
+- **Inputs/Buttons**: `rounded-lg`
+
+#### The "Lineage" Color System
+
+- **Source (S)**: Blue accents (`bg-blue-50/50`, `bg-blue-100` badges)
+- **Virtual (V)**: Purple accents (`bg-purple-50/50`, `bg-purple-100` badges)
