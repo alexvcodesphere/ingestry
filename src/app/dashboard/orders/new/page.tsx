@@ -2,7 +2,8 @@
 
 /**
  * New Order Page
- * Wizard flow for creating a new order: upload file → select profile → process
+ * Simplified wizard: upload file → select profile → process
+ * Shop system is derived from the selected profile's default export config
  */
 
 import { useState, useEffect } from "react";
@@ -18,7 +19,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import type { ShopSystem } from "@/types";
+import type { ShopSystem, ExportConfig } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -26,21 +27,16 @@ interface ProcessingProfile {
     id: string;
     name: string;
     is_default: boolean;
+    export_configs?: ExportConfig[];
+    default_export_config_idx?: number;
 }
 
 type WizardStep = "upload" | "configure" | "processing";
-
-const shopSystems: { value: ShopSystem; label: string; description: string }[] = [
-    { value: "shopware", label: "Shopware", description: "Shopware 6 API" },
-    { value: "xentral", label: "Xentral", description: "Xentral ERP System" },
-    { value: "shopify", label: "Shopify", description: "Shopify Storefront (Mock)" },
-];
 
 export default function NewOrderPage() {
     const router = useRouter();
     const [step, setStep] = useState<WizardStep>("upload");
     const [file, setFile] = useState<File | null>(null);
-    const [shopSystem, setShopSystem] = useState<ShopSystem>("shopware");
     const [orderName, setOrderName] = useState("");
     const [_isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -51,13 +47,19 @@ export default function NewOrderPage() {
     const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState<string>("");
 
+    // Get selected profile
+    const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+    const defaultExportConfig = selectedProfile?.export_configs?.[
+        selectedProfile?.default_export_config_idx ?? 0
+    ];
+
     // Fetch profiles on mount
     useEffect(() => {
         const fetchProfiles = async () => {
             const supabase = createClient();
             const { data } = await supabase
                 .from("input_profiles")
-                .select("id, name, is_default")
+                .select("id, name, is_default, export_configs, default_export_config_idx")
                 .order("is_default", { ascending: false });
 
             if (data && data.length > 0) {
@@ -111,7 +113,7 @@ export default function NewOrderPage() {
         try {
             const formData = new FormData();
             formData.append("file", file);
-            formData.append("shop_system", shopSystem);
+            // shop_system is now optional - derived from profile on server
             if (selectedProfileId) {
                 formData.append("profile_id", selectedProfileId);
             }
@@ -258,13 +260,13 @@ export default function NewOrderPage() {
                 </Card>
             )}
 
-            {/* Step 2: Configure */}
+            {/* Step 2: Configure - Simplified without shop system selection */}
             {step === "configure" && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Configure Processing</CardTitle>
                         <CardDescription>
-                            Select the target shop system and processing options
+                            Select processing profile and name your order
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pb-6">
@@ -293,40 +295,38 @@ export default function NewOrderPage() {
                                     <SelectValue placeholder="Select a profile" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {profiles.map((profile) => (
-                                        <SelectItem key={profile.id} value={profile.id}>
-                                            {profile.is_default && "⭐ "}{profile.name}
-                                        </SelectItem>
-                                    ))}
+                                    {profiles.map((profile) => {
+                                        const exportConfig = profile.export_configs?.[
+                                            profile.default_export_config_idx ?? 0
+                                        ];
+                                        const targetLabel = exportConfig?.shop_system
+                                            ? ` → ${exportConfig.shop_system.charAt(0).toUpperCase() + exportConfig.shop_system.slice(1)}`
+                                            : "";
+                                        return (
+                                            <SelectItem key={profile.id} value={profile.id}>
+                                                {profile.is_default && "⭐ "}{profile.name}{targetLabel}
+                                            </SelectItem>
+                                        );
+                                    })}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                Determines which fields to extract and how to generate SKUs
+                                Determines extraction fields, transformations, and export target
                             </p>
                         </div>
 
-                        {/* Shop System Selection */}
-                        <div className="space-y-2">
-                            <Label>Target Shop System</Label>
-                            <div className="grid grid-cols-3 gap-3">
-                                {shopSystems.map((system) => (
-                                    <button
-                                        key={system.value}
-                                        type="button"
-                                        onClick={() => setShopSystem(system.value)}
-                                        className={`p-4 rounded-lg border-2 text-left transition-colors ${shopSystem === system.value
-                                            ? "border-primary bg-primary/5"
-                                            : "border-muted hover:border-muted-foreground/50"
-                                            }`}
-                                    >
-                                        <p className="font-medium">{system.label}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {system.description}
-                                        </p>
-                                    </button>
-                                ))}
+                        {/* Show selected export target */}
+                        {defaultExportConfig && (
+                            <div className="p-3 bg-muted/50 rounded-lg">
+                                <p className="text-sm">
+                                    <span className="text-muted-foreground">Export Target:</span>{" "}
+                                    <span className="font-medium capitalize">{defaultExportConfig.shop_system}</span>
+                                    {defaultExportConfig.format && (
+                                        <span className="text-muted-foreground"> ({defaultExportConfig.format.toUpperCase()})</span>
+                                    )}
+                                </p>
                             </div>
-                        </div>
+                        )}
 
                         {/* Actions */}
                         <div className="flex gap-3">

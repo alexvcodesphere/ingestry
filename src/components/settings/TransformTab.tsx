@@ -1,0 +1,259 @@
+"use client";
+
+/**
+ * TransformTab - Logic & AI Enrichment
+ * Part of the unified profile editor (Schema Master pattern)
+ */
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import type { FieldDefinition } from "@/types";
+import { Plus, Sparkles, Calculator, Trash2, Wand2 } from "lucide-react";
+
+interface LookupOption {
+    field_key: string;
+}
+
+interface TransformTabProps {
+    fields: FieldDefinition[];
+    lookupOptions: LookupOption[];
+    skuTemplate: string;
+    generateSku: boolean;
+    onFieldsChange: (fields: FieldDefinition[]) => void;
+    onSkuTemplateChange: (template: string) => void;
+    onGenerateSkuChange: (generate: boolean) => void;
+}
+
+export function TransformTab({
+    fields,
+    lookupOptions,
+    onFieldsChange,
+}: TransformTabProps) {
+    const [newComputedKey, setNewComputedKey] = useState("");
+
+    const extractedFields = fields.filter(f => f.source !== 'computed');
+    const computedFields = fields.filter(f => f.source === 'computed');
+
+    const handleAddComputedField = () => {
+        if (!newComputedKey.trim()) return;
+        onFieldsChange([
+            ...fields,
+            {
+                key: newComputedKey.trim().toLowerCase().replace(/\s+/g, '_'),
+                label: newComputedKey.trim(),
+                type: "text",
+                required: false,
+                source: "computed",
+                logic_type: "template",
+                template: "",
+            },
+        ]);
+        setNewComputedKey("");
+    };
+
+    const handleFieldUpdate = (key: string, updates: Partial<FieldDefinition>) => {
+        onFieldsChange(
+            fields.map((f) => (f.key === key ? { ...f, ...updates } : f))
+        );
+    };
+
+    const handleRemoveComputedField = (key: string) => {
+        onFieldsChange(fields.filter((f) => f.key !== key));
+    };
+
+    const availableVars = extractedFields.map(f => f.key).filter(Boolean);
+
+    return (
+        <div className="space-y-5">
+            {/* Add Computed Field */}
+            <div className="p-4 border-2 border-dashed rounded-xl bg-purple-50/30 dark:bg-purple-950/20">
+                <div className="flex items-center gap-2 mb-2">
+                    <Wand2 className="h-5 w-5 text-purple-500" />
+                    <Label className="text-sm font-medium">Create Virtual Field</Label>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                    Create computed fields for derived values, marketing descriptions, SKUs, etc.
+                </p>
+                <div className="flex gap-2">
+                    <Input
+                        value={newComputedKey}
+                        onChange={(e) => setNewComputedKey(e.target.value)}
+                        placeholder="e.g., sku, shop_description"
+                        className="flex-1 h-9"
+                        onKeyDown={(e) => e.key === "Enter" && handleAddComputedField()}
+                    />
+                    <Button size="sm" onClick={handleAddComputedField} disabled={!newComputedKey.trim()} className="gap-1.5 h-9">
+                        <Plus className="h-4 w-4" />
+                        Add
+                    </Button>
+                </div>
+            </div>
+
+            {/* Computed Fields List */}
+            {computedFields.length > 0 && (
+                <div className="space-y-3">
+                    <Label className="text-sm font-medium">Computed Fields</Label>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                        {computedFields.map((field) => (
+                            <div
+                                key={field.key}
+                                className="p-4 border rounded-xl bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/30 dark:to-transparent ring-1 ring-inset ring-purple-200/50 dark:ring-purple-800/50"
+                            >
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide">
+                                        Virtual
+                                    </span>
+                                    <span className="font-medium text-sm">{field.label || field.key}</span>
+                                    <span className="text-xs text-muted-foreground font-mono">({field.key})</span>
+                                    <div className="flex-1" />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleRemoveComputedField(field.key)}
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+
+                                {/* Logic Type */}
+                                <div className="flex items-center gap-3 mb-3">
+                                    <Select
+                                        value={field.logic_type || "template"}
+                                        onValueChange={(value) =>
+                                            handleFieldUpdate(field.key, {
+                                                logic_type: value as FieldDefinition["logic_type"],
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger className="w-44 h-8 text-sm">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">
+                                                <span className="flex items-center gap-2">None (Empty)</span>
+                                            </SelectItem>
+                                            <SelectItem value="template">
+                                                <span className="flex items-center gap-2">
+                                                    <Calculator className="h-3 w-3" /> Template
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="ai_enrichment">
+                                                <span className="flex items-center gap-2">
+                                                    <Sparkles className="h-3 w-3" /> AI Enrichment
+                                                </span>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Template Input */}
+                                {field.logic_type === "template" && (
+                                    <div className="space-y-2">
+                                        <Input
+                                            value={field.template || ""}
+                                            onChange={(e) =>
+                                                handleFieldUpdate(field.key, { template: e.target.value })
+                                            }
+                                            placeholder="{brand}-{category:2}{color:2}{sequence:3}"
+                                            className="font-mono text-sm h-8"
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Variables: {availableVars.length > 0 ? availableVars.map(v => `{${v}}`).join(", ") : "Add intake fields first"}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* AI Prompt */}
+                                {field.logic_type === "ai_enrichment" && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Sparkles className="h-4 w-4 text-amber-500" />
+                                            <Label className="text-xs font-medium">AI Prompt</Label>
+                                        </div>
+                                        <textarea
+                                            value={field.ai_prompt || ""}
+                                            onChange={(e) =>
+                                                handleFieldUpdate(field.key, { ai_prompt: e.target.value })
+                                            }
+                                            placeholder="Write a 2-sentence creative marketing description for this product based on the brand and category."
+                                            className="w-full h-16 rounded-lg border px-3 py-2 text-sm resize-none"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Fallback */}
+                                <div className="mt-3">
+                                    <Input
+                                        value={field.fallback || ""}
+                                        onChange={(e) =>
+                                            handleFieldUpdate(field.key, { fallback: e.target.value })
+                                        }
+                                        placeholder="Fallback value if empty"
+                                        className="text-sm h-8"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Source Fields - Catalog Matching */}
+            {extractedFields.length > 0 && (
+                <div className="space-y-3">
+                    <div>
+                        <Label className="text-sm font-medium">Catalog Matching</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Link source fields to lookup catalogs for normalization
+                        </p>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {extractedFields.map((field) => (
+                            <div
+                                key={field.key}
+                                className="flex items-center gap-3 p-2.5 border rounded-lg text-sm"
+                            >
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400 font-medium">
+                                    SRC
+                                </span>
+                                <span className="w-24 font-medium truncate">{field.label || field.key}</span>
+                                
+                                <Select
+                                    value={field.catalog_key || "_none"}
+                                    onValueChange={(value) =>
+                                        handleFieldUpdate(field.key, {
+                                            catalog_key: value === "_none" ? undefined : value,
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger className="w-32 h-8 text-sm">
+                                        <SelectValue placeholder="No catalog" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="_none">No catalog</SelectItem>
+                                        {lookupOptions.map((opt) => (
+                                            <SelectItem key={opt.field_key} value={opt.field_key}>
+                                                {opt.field_key}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
-        const shopSystem = formData.get('shop_system') as ShopSystem;
+        const shopSystemForm = formData.get('shop_system') as ShopSystem | null;
         const brandId = formData.get('brand_id') as string | null;
         const profileId = formData.get('profile_id') as string | null;
         const orderName = formData.get('order_name') as string | null;
@@ -87,12 +87,7 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
-        if (!shopSystem) {
-            return NextResponse.json(
-                { success: false, error: 'Shop system is required' },
-                { status: 400 }
-            );
-        }
+        // shop_system is now optional - will be derived from profile if not provided
 
         // Brand is handled via code_lookups during normalization, not fetched separately
 
@@ -106,7 +101,7 @@ export async function POST(request: NextRequest) {
                     fileName: file.name,
                     fileSize: file.size,
                     orderName: orderName || file.name.replace(/\.[^/.]+$/, ''),
-                    shopSystem,
+                    shopSystem: shopSystemForm,
                     brandId,
                     profileId,
                 },
@@ -154,6 +149,14 @@ export async function POST(request: NextRequest) {
 
         console.log(`[API] Profile: ${profile.name}`);
         console.log(`[API] Profile fields: ${profile.fields?.map((f: { key: string }) => f.key).join(', ')}`);
+
+        // API Decoupling: Derive shop_system from profile if not provided
+        const defaultExportConfig = (profile as { export_configs?: Array<{ shop_system: ShopSystem }>, default_export_config_idx?: number }).export_configs?.[
+            (profile as { default_export_config_idx?: number }).default_export_config_idx ?? 0
+        ];
+        const shopSystem: ShopSystem = shopSystemForm || defaultExportConfig?.shop_system || 'xentral';
+        console.log(`[API] Shop system: ${shopSystem} (from: ${shopSystemForm ? 'form' : 'profile'})`);
+
 
         // Pre-fetch catalog data for semantic matching (single DB query)
         const catalogKeys = profile.fields
@@ -231,7 +234,7 @@ export async function POST(request: NextRequest) {
                     normalize_colors: true,
                     match_catalogue: false,
                 },
-            }, profile);
+            }, profile as Parameters<typeof processOrder>[2]);
 
             // Update job as completed
             await supabase

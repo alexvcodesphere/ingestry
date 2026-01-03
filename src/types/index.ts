@@ -148,6 +148,13 @@ export interface FieldDefinition {
     enumValues?: string[];
     defaultValue?: string;
     catalog_key?: string;  // catalog key for matching during extraction
+    // Schema Master: Field source
+    source?: 'extracted' | 'computed';  // where field value comes from (default: extracted)
+    // Logic type for computed/enriched fields
+    logic_type?: 'none' | 'template' | 'ai_enrichment';
+    template?: string;  // template expression e.g. "{brand} - {name}"
+    ai_prompt?: string;  // AI enrichment prompt e.g. "Write a marketing description..."
+    fallback?: string;  // fallback value if extraction/computation returns empty
 }
 
 export interface ExtractionProfile {
@@ -209,8 +216,34 @@ export interface ProcessingProfile {
     sku_template?: string;
     generate_sku: boolean;
     is_default: boolean;
+    export_configs: ExportConfig[];
+    default_export_config_idx?: number;
     created_at?: string;
     updated_at?: string;
+}
+
+// ============================================
+// Export Configuration (Unified Profile)
+// ============================================
+
+export interface FieldMapping {
+    source: string;
+    target: string;
+    template?: string;
+    default_value?: string;
+}
+
+export interface ExportConfig {
+    id: string;
+    name: string;
+    shop_system: ShopSystem;
+    field_mappings: FieldMapping[];
+    format: 'csv' | 'json';
+    format_options: {
+        delimiter?: string;
+        include_header?: boolean;
+    };
+    is_default?: boolean;
 }
 
 // ============================================

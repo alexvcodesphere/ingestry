@@ -39,13 +39,15 @@ export interface FormatOptions {
 
 /**
  * Output Profile configuration.
+ * @deprecated Use ExportConfig from '@/types' instead. Kept for backwards compatibility.
  * Defines how to map and format data for export to external systems.
  */
 export interface OutputProfile {
     id: string;
-    tenant_id: string;
+    tenant_id?: string;
     name: string;
     description?: string;
+    shop_system?: 'shopify' | 'shopware' | 'xentral';
     /** Field mappings from internal to external format */
     field_mappings: FieldMapping[];
     /** Output format type */
@@ -53,7 +55,7 @@ export interface OutputProfile {
     /** Format-specific options */
     format_options: FormatOptions;
     /** Whether this is the default profile for the tenant */
-    is_default: boolean;
+    is_default?: boolean;
     created_at?: string;
 }
 

@@ -13,8 +13,8 @@ import type {
     DraftLineItem,
     LineItemStatus,
     ValidationError,
+    ProcessingProfile,
 } from '@/types';
-import type { ProcessingProfile } from '@/lib/extraction';
 import { normalizeProducts } from './normalizer';
 import { createClient } from '@/lib/supabase/server';
 
@@ -118,6 +118,9 @@ async function createDraftOrder(
                 profile_id: profile?.id || null,
                 profile_name: profile?.name || null,
                 profile_fields: profile?.fields || null,
+                // Config Snapshotting: Capture active export config at order creation time
+                // Orders use this snapshot for export, not live profile data
+                export_config_snapshot: profile?.export_configs?.[profile.default_export_config_idx ?? 0] || null,
             },
         })
         .select()

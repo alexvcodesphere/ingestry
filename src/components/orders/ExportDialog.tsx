@@ -2,8 +2,8 @@
 
 /**
  * Export Dialog Component
- * Human-in-the-loop review before exporting data.
- * See /archive/EXPORT_ARCHITECTURE.md for full documentation.
+ * Uses snapshotted export config from order metadata (Config Snapshotting guardrail).
+ * Falls back to profile's export_configs for legacy orders.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -24,18 +24,20 @@ import {
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { mapRecords, type OutputProfile, type DataRecord, type FieldMapping } from "@/lib/export";
+import type { ExportConfig, ShopSystem } from "@/types";
 
-interface DBOutputProfile {
+interface ExportConfigOption {
     id: string;
     name: string;
-    description: string | null;
+    shop_system: ShopSystem;
     field_mappings: FieldMapping[];
     format: "csv" | "json";
     format_options: {
         delimiter?: string;
         include_header?: boolean;
     };
-    is_default: boolean;
+    is_default?: boolean;
+    source: "snapshot" | "profile";
 }
 
 interface ExportDialogProps {
@@ -46,93 +48,158 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange, orderId, records }: ExportDialogProps) {
-    const [profiles, setProfiles] = useState<DBOutputProfile[]>([]);
-    const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+    const [exportConfigs, setExportConfigs] = useState<ExportConfigOption[]>([]);
+    const [selectedConfigId, setSelectedConfigId] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [isExporting, setIsExporting] = useState(false);
     const [previewData, setPreviewData] = useState<DataRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch output profiles
-    const fetchProfiles = useCallback(async () => {
+    // Fetch export config from order metadata (snapshot) or profile fallback
+    const fetchExportConfig = useCallback(async () => {
         setIsLoading(true);
         const supabase = createClient();
-        const { data, error } = await supabase
-            .from("output_profiles")
-            .select("*")
-            .order("is_default", { ascending: false });
 
-        if (!error && data) {
-            setProfiles(data);
-            // Select default or first profile
-            const defaultProfile = data.find(p => p.is_default) || data[0];
-            if (defaultProfile) {
-                setSelectedProfileId(defaultProfile.id);
+        try {
+            // Fetch the order with metadata and profile
+            const { data: order, error: orderError } = await supabase
+                .from("draft_orders")
+                .select("metadata")
+                .eq("id", orderId)
+                .single();
+
+            if (orderError) throw orderError;
+
+            const configs: ExportConfigOption[] = [];
+
+            // Check for snapshotted config in metadata (preferred)
+            const snapshot = order?.metadata?.export_config_snapshot as ExportConfig | null;
+            if (snapshot) {
+                configs.push({
+                    ...snapshot,
+                    id: snapshot.id || "snapshot",
+                    source: "snapshot",
+                });
             }
+
+            // Fallback: fetch from profile if no snapshot or additional configs needed
+            if (order?.metadata?.profile_id) {
+                const { data: profile } = await supabase
+                    .from("input_profiles")
+                    .select("export_configs, default_export_config_idx")
+                    .eq("id", order.metadata.profile_id)
+                    .single();
+
+                if (profile?.export_configs && Array.isArray(profile.export_configs)) {
+                    for (const config of profile.export_configs) {
+                        // Don't add duplicates if already in snapshot
+                        if (!snapshot || config.id !== snapshot.id) {
+                            configs.push({
+                                ...config,
+                                source: "profile",
+                            });
+                        }
+                    }
+                }
+            }
+
+            setExportConfigs(configs);
+            
+            // Select first config (snapshot takes priority)
+            if (configs.length > 0) {
+                setSelectedConfigId(configs[0].id);
+            }
+        } catch (err) {
+            console.error("Failed to fetch export config:", err);
+            setError("Failed to load export configuration");
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
-    }, []);
+    }, [orderId]);
 
     useEffect(() => {
         if (open) {
-            fetchProfiles();
+            fetchExportConfig();
             setError(null);
         }
-    }, [open, fetchProfiles]);
+    }, [open, fetchExportConfig]);
 
-    // Update preview when profile changes
+    // Update preview when config changes
     useEffect(() => {
-        if (selectedProfileId && records.length > 0) {
-            const profile = profiles.find(p => p.id === selectedProfileId);
-            if (profile) {
+        if (selectedConfigId && records.length > 0) {
+            const config = exportConfigs.find(c => c.id === selectedConfigId);
+            if (config) {
                 const outputProfile: OutputProfile = {
-                    id: profile.id,
-                    tenant_id: "",
-                    name: profile.name,
-                    field_mappings: profile.field_mappings || [],
-                    format: profile.format,
+                    id: config.id,
+                    name: config.name,
+                    shop_system: config.shop_system,
+                    field_mappings: config.field_mappings || [],
+                    format: config.format,
                     format_options: {
-                        delimiter: profile.format_options?.delimiter || ";",
-                        include_header: profile.format_options?.include_header !== false,
+                        delimiter: config.format_options?.delimiter || ";",
+                        include_header: config.format_options?.include_header !== false,
                     },
-                    is_default: profile.is_default,
+                    is_default: config.is_default,
                 };
                 const mapped = mapRecords(records.slice(0, 5), outputProfile);
                 setPreviewData(mapped);
             }
         }
-    }, [selectedProfileId, profiles, records]);
+    }, [selectedConfigId, exportConfigs, records]);
 
     const handleExport = async () => {
-        if (!selectedProfileId) return;
+        if (!selectedConfigId) return;
 
         setIsExporting(true);
         setError(null);
 
         try {
-            const response = await fetch("/api/export", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
+            const config = exportConfigs.find(c => c.id === selectedConfigId);
+            if (!config) throw new Error("No export config selected");
+
+            // Build output profile from selected config
+            const outputProfile: OutputProfile = {
+                id: config.id,
+                name: config.name,
+                shop_system: config.shop_system,
+                field_mappings: config.field_mappings || [],
+                format: config.format,
+                format_options: {
+                    delimiter: config.format_options?.delimiter || ";",
+                    include_header: config.format_options?.include_header !== false,
                 },
-                body: JSON.stringify({
-                    order_id: orderId,
-                    profile_id: selectedProfileId,
-                }),
-            });
+                is_default: config.is_default,
+            };
 
-            const result = await response.json();
+            // Map all records
+            const mappedData = mapRecords(records, outputProfile);
 
-            if (!result.success) {
-                throw new Error(result.error || "Export failed");
+            // Serialize based on format
+            let content: string;
+            let contentType: string;
+            let extension: string;
+
+            if (config.format === "csv") {
+                const headers = Object.keys(mappedData[0] || {});
+                const delimiter = config.format_options?.delimiter || ";";
+                const rows = [
+                    config.format_options?.include_header !== false ? headers.join(delimiter) : "",
+                    ...mappedData.map(row =>
+                        headers.map(h => String(row[h] || "").replace(/"/g, '""')).join(delimiter)
+                    ),
+                ].filter(Boolean);
+                content = rows.join("\n");
+                contentType = "text/csv";
+                extension = "csv";
+            } else {
+                content = JSON.stringify(mappedData, null, 2);
+                contentType = "application/json";
+                extension = "json";
             }
 
-            // Download the file
-            const profile = profiles.find(p => p.id === selectedProfileId);
-            const content = result.data.content;
-            const filename = result.data.filename || `export_${profile?.name || "data"}.csv`;
-            const contentType = result.data.content_type || "text/csv";
-
+            // Download
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const filename = `export_${config.name.toLowerCase().replace(/\s+/g, "_")}_${timestamp}.${extension}`;
             const blob = new Blob([content], { type: contentType });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
@@ -151,7 +218,7 @@ export function ExportDialog({ open, onOpenChange, orderId, records }: ExportDia
         }
     };
 
-    const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+    const selectedConfig = exportConfigs.find(c => c.id === selectedConfigId);
     const previewColumns = previewData.length > 0 ? Object.keys(previewData[0]) : [];
 
     return (
@@ -160,37 +227,45 @@ export function ExportDialog({ open, onOpenChange, orderId, records }: ExportDia
                 <DialogHeader>
                     <DialogTitle>Export Order</DialogTitle>
                     <DialogDescription>
-                        Select an output profile and review the data before exporting
+                        Review the data transformation before exporting
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="flex-1 overflow-y-auto space-y-4 py-4">
-                    {/* Profile Selection */}
+                    {/* Config Selection */}
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Output Profile</label>
+                        <label className="text-sm font-medium">Export Configuration</label>
                         {isLoading ? (
                             <div className="h-9 bg-muted animate-pulse rounded-md" />
+                        ) : exportConfigs.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No export configuration available. Configure exports in your processing profile.
+                            </p>
                         ) : (
                             <Select
-                                value={selectedProfileId}
-                                onValueChange={setSelectedProfileId}
+                                value={selectedConfigId}
+                                onValueChange={setSelectedConfigId}
                             >
                                 <SelectTrigger className="w-full">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {profiles.map(profile => (
-                                        <SelectItem key={profile.id} value={profile.id}>
-                                            {profile.name} ({profile.format.toUpperCase()})
-                                            {profile.is_default ? " - Default" : ""}
+                                    {exportConfigs.map(config => (
+                                        <SelectItem key={config.id} value={config.id}>
+                                            {config.name} ({config.format.toUpperCase()})
+                                            {config.source === "snapshot" && " ✓ Snapshot"}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         )}
-                        {selectedProfile?.description && (
+                        {selectedConfig && (
                             <p className="text-xs text-muted-foreground">
-                                {selectedProfile.description}
+                                Target: {selectedConfig.shop_system} • 
+                                {selectedConfig.source === "snapshot" 
+                                    ? " Using config from order creation time"
+                                    : " From current profile"
+                                }
                             </p>
                         )}
                     </div>
@@ -263,9 +338,9 @@ export function ExportDialog({ open, onOpenChange, orderId, records }: ExportDia
                         </Button>
                         <Button
                             onClick={handleExport}
-                            disabled={isExporting || !selectedProfileId || records.length === 0}
+                            disabled={isExporting || !selectedConfigId || records.length === 0}
                         >
-                            {isExporting ? "Exporting..." : `Download ${selectedProfile?.format?.toUpperCase() || "CSV"}`}
+                            {isExporting ? "Exporting..." : `Download ${selectedConfig?.format?.toUpperCase() || "CSV"}`}
                         </Button>
                     </div>
                 </div>

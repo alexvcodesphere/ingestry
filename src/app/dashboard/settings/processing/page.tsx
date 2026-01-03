@@ -1,90 +1,68 @@
 "use client";
 
 /**
- * Processing Profiles Settings Page
- * Unified configuration for extraction, normalization, and SKU generation
+ * Unified Profile Settings Page
+ * Schema Master pattern: Fields flow through Intake → Transform → Export
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { TemplateInput } from "@/components/ui/template-input";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
-import { Trash2 } from "lucide-react";
+import type { ProcessingProfile, FieldDefinition, ExportConfig } from "@/types";
+import { IntakeTab } from "@/components/settings/IntakeTab";
+import { TransformTab } from "@/components/settings/TransformTab";
+import { ExportTab } from "@/components/settings/ExportTab";
+import { Trash2, FileText, Sparkles, Send, ChevronRight } from "lucide-react";
 
-interface FieldConfig {
-    key: string;
-    label: string;
-    required?: boolean;
-    catalog_key?: string; // catalog field_key for matching
-    use_template?: boolean;  // if true, value is computed from template
-    template?: string;       // template string e.g. "{brand} - {name}"
-    fallback?: string;       // default value if extraction returns empty
-}
-
-interface ProcessingProfile {
-    id: string;
-    tenant_id: string;
-    name: string;
-    description?: string;
-    fields: FieldConfig[];
-    is_default: boolean;
-    created_at: string;
-}
-
-// Available lookup types (from code_lookups.field_key)
 interface LookupOption {
     field_key: string;
 }
 
-// No default fields - all fields are user-defined
-
-export default function ProcessingProfilesPage() {
+export default function UnifiedProfilesPage() {
     const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
-    const [lookupOptions, setLookupOptions] = useState<LookupOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProfile, setEditingProfile] = useState<ProcessingProfile | null>(null);
+    const [lookupOptions, setLookupOptions] = useState<LookupOption[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [activeTab, setActiveTab] = useState("intake");
 
-    // Editor form state
-    const [formName, setFormName] = useState("");
-    const [formDescription, setFormDescription] = useState("");
-    const [formFields, setFormFields] = useState<FieldConfig[]>([]);
-    const [formIsDefault, setFormIsDefault] = useState(false);
-
-    // Custom field creation
-    const [newFieldKey, setNewFieldKey] = useState("");
-    const [newFieldLabel, setNewFieldLabel] = useState("");
+    // Form state
+    const [formData, setFormData] = useState({
+        name: "",
+        description: "",
+        fields: [] as FieldDefinition[],
+        prompt_additions: "",
+        sku_template: "",
+        generate_sku: false,
+        export_configs: [] as ExportConfig[],
+        default_export_config_idx: 0,
+    });
 
     const fetchProfiles = useCallback(async () => {
-        setIsLoading(true);
         const supabase = createClient();
-
         const { data, error } = await supabase
             .from("input_profiles")
             .select("*")
-            .order("is_default", { ascending: false })
-            .order("name");
+            .order("is_default", { ascending: false });
 
         if (!error && data) {
-            setProfiles(data as ProcessingProfile[]);
+            setProfiles(data.map(p => ({
+                ...p,
+                generate_sku: p.generate_sku ?? false,
+                export_configs: p.export_configs ?? [],
+                default_export_config_idx: p.default_export_config_idx ?? 0,
+            })));
         }
         setIsLoading(false);
     }, []);
@@ -93,11 +71,11 @@ export default function ProcessingProfilesPage() {
         const supabase = createClient();
         const { data } = await supabase
             .from("code_lookups")
-            .select("field_key");
+            .select("field_key")
+            .order("field_key");
         if (data) {
-            // Get unique field_keys
-            const uniqueKeys = [...new Set(data.map(d => d.field_key))];
-            setLookupOptions(uniqueKeys.map(k => ({ field_key: k })));
+            const unique = [...new Set(data.map((d) => d.field_key))];
+            setLookupOptions(unique.map((fk) => ({ field_key: fk })));
         }
     }, []);
 
@@ -109,69 +87,55 @@ export default function ProcessingProfilesPage() {
     const openEditor = (profile?: ProcessingProfile) => {
         if (profile) {
             setEditingProfile(profile);
-            setFormName(profile.name || "");
-            setFormDescription(profile.description || "");
-            setFormFields(Array.isArray(profile.fields) ? profile.fields : []);
-            setFormIsDefault(profile.is_default || false);
+            // Ensure all fields have source set
+            const fieldsWithSource = (profile.fields || []).map(f => ({
+                ...f,
+                source: f.source || 'extracted' as const,
+            }));
+            setFormData({
+                name: profile.name,
+                description: profile.description || "",
+                fields: fieldsWithSource,
+                prompt_additions: profile.prompt_additions || "",
+                sku_template: profile.sku_template || "",
+                generate_sku: profile.generate_sku ?? false,
+                export_configs: profile.export_configs || [],
+                default_export_config_idx: profile.default_export_config_idx ?? 0,
+            });
         } else {
             setEditingProfile(null);
-            setFormName("");
-            setFormDescription("");
-            setFormFields([]);
-            setFormIsDefault(false);
+            setFormData({
+                name: "",
+                description: "",
+                fields: [{ key: "", label: "", type: "text", required: false, source: "extracted" }],
+                prompt_additions: "",
+                sku_template: "",
+                generate_sku: false,
+                export_configs: [],
+                default_export_config_idx: 0,
+            });
         }
-        // Reset custom field inputs
-        setNewFieldKey("");
-        setNewFieldLabel("");
-        setIsEditorOpen(true);
+        setActiveTab("intake");
+        setIsDialogOpen(true);
     };
 
-    const updateCatalogMatching = (key: string, lookupSlug: string | null) => {
-        setFormFields(formFields.map(f =>
-            f.key === key
-                ? { ...f, catalog_key: lookupSlug || undefined }
-                : f
-        ));
-    };
+    // Auto-create export mappings when fields are added
+    const handleFieldsChange = (newFields: FieldDefinition[]) => {
+        const currentKeys = new Set(formData.fields.map(f => f.key));
+        const newKeys = newFields.filter(f => f.key && !currentKeys.has(f.key));
 
-    const toggleFieldTemplate = (key: string, useTemplate: boolean) => {
-        setFormFields(formFields.map(f =>
-            f.key === key
-                ? { ...f, use_template: useTemplate, template: useTemplate ? (f.template || '') : undefined }
-                : f
-        ));
-    };
-
-    const updateFieldTemplate = (key: string, template: string) => {
-        setFormFields(formFields.map(f =>
-            f.key === key
-                ? { ...f, template }
-                : f
-        ));
-    };
-
-    const updateFieldFallback = (key: string, fallback: string) => {
-        setFormFields(formFields.map(f =>
-            f.key === key
-                ? { ...f, fallback: fallback || undefined }
-                : f
-        ));
-    };
-
-    const addField = () => {
-        if (!newFieldKey.trim() || !newFieldLabel.trim()) return;
-        const key = newFieldKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        if (formFields.some(f => f.key === key)) {
-            alert("A field with this key already exists");
-            return;
+        if (newKeys.length > 0 && formData.export_configs.length > 0) {
+            const updatedConfigs = formData.export_configs.map(config => ({
+                ...config,
+                field_mappings: [
+                    ...config.field_mappings,
+                    ...newKeys.map(f => ({ source: f.key, target: f.key })),
+                ],
+            }));
+            setFormData({ ...formData, fields: newFields, export_configs: updatedConfigs });
+        } else {
+            setFormData({ ...formData, fields: newFields });
         }
-        setFormFields([...formFields, { key, label: newFieldLabel.trim() }]);
-        setNewFieldKey("");
-        setNewFieldLabel("");
-    };
-
-    const removeField = (key: string) => {
-        setFormFields(formFields.filter(f => f.key !== key));
     };
 
     const handleSave = async () => {
@@ -179,36 +143,30 @@ export default function ProcessingProfilesPage() {
         const supabase = createClient();
 
         try {
-            const profileData = {
-                name: formName,
-                description: formDescription || null,
-                fields: formFields,
-                is_default: formIsDefault,
+            const payload = {
+                name: formData.name,
+                description: formData.description || null,
+                fields: formData.fields,
+                prompt_additions: formData.prompt_additions || null,
+                sku_template: formData.sku_template || null,
+                generate_sku: formData.generate_sku,
+                export_configs: formData.export_configs,
+                default_export_config_idx: formData.default_export_config_idx,
             };
-
-            // If setting as default, unset others first to avoid unique constraint error
-            // RLS ensures this only affects the current tenant
-            if (formIsDefault) {
-                await supabase
-                    .from("input_profiles")
-                    .update({ is_default: false })
-                    .eq("is_default", true);
-            }
 
             if (editingProfile) {
                 const { error } = await supabase
                     .from("input_profiles")
-                    .update(profileData)
+                    .update(payload)
                     .eq("id", editingProfile.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
                     .from("input_profiles")
-                    .insert(profileData);
+                    .insert(payload);
                 if (error) throw error;
             }
-
-            setIsEditorOpen(false);
+            setIsDialogOpen(false);
             await fetchProfiles();
         } catch (error) {
             console.error("Failed to save profile:", error);
@@ -220,22 +178,22 @@ export default function ProcessingProfilesPage() {
 
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this profile?")) return;
-
         const supabase = createClient();
         await supabase.from("input_profiles").delete().eq("id", id);
         await fetchProfiles();
     };
 
-    const handleDuplicate = (profile: ProcessingProfile) => {
-        setEditingProfile(null);
-        setFormName(`${profile.name} (Copy)`);
-        setFormDescription(profile.description || "");
-        setFormFields(Array.isArray(profile.fields) ? [...profile.fields] : []);
-        setFormIsDefault(false);
-        setNewFieldKey("");
-        setNewFieldLabel("");
-        setIsEditorOpen(true);
+    const handleSetDefault = async (id: string) => {
+        const supabase = createClient();
+        await supabase.from("input_profiles").update({ is_default: false }).neq("id", id);
+        await supabase.from("input_profiles").update({ is_default: true }).eq("id", id);
+        await fetchProfiles();
     };
+
+    // Count fields by type
+    const extractedCount = formData.fields.filter(f => f.source !== 'computed').length;
+    const computedCount = formData.fields.filter(f => f.source === 'computed').length;
+    const mappedCount = formData.export_configs[0]?.field_mappings.length || 0;
 
     if (isLoading) {
         return (
@@ -249,243 +207,239 @@ export default function ProcessingProfilesPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Input Profiles</h2>
-                    <p className="text-sm text-muted-foreground">Configure extraction fields and normalization</p>
+                    <h3 className="text-xl font-semibold">Processing Profiles</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Configure extraction, transformation, and export settings
+                    </p>
                 </div>
-                <Button onClick={() => openEditor()} size="sm">+ New Profile</Button>
+                <Button onClick={() => openEditor()}>Add Profile</Button>
             </div>
 
             {/* Profiles List */}
             <div className="space-y-3">
-                {profiles.length === 0 && (
-                    <Card>
-                        <CardContent className="p-8 text-center text-muted-foreground">
-                            No profiles configured yet. Create one to get started.
-                        </CardContent>
-                    </Card>
-                )}
-                {profiles.map((profile) => (
-                    <Card key={profile.id}>
-                        <CardContent className="p-4">
-                            <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <h4 className="font-medium">{profile.name}</h4>
-                                        {profile.is_default && (
-                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                                                Default
-                                            </span>
+                {profiles.map((profile) => {
+                    const extracted = profile.fields?.filter(f => f.source !== 'computed').length || 0;
+                    const computed = profile.fields?.filter(f => f.source === 'computed').length || 0;
+                    return (
+                        <Card key={profile.id}>
+                            <CardContent className="p-4">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <h4 className="font-medium">{profile.name}</h4>
+                                            {profile.is_default && (
+                                                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                                    Default
+                                                </span>
+                                            )}
+                                            {profile.export_configs && profile.export_configs.length > 0 && (
+                                                <span className="text-xs bg-muted px-2 py-0.5 rounded capitalize">
+                                                    → {profile.export_configs[profile.default_export_config_idx ?? 0]?.shop_system || 'No export'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {profile.description && (
+                                            <p className="text-sm text-muted-foreground mb-2">
+                                                {profile.description}
+                                            </p>
                                         )}
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1">
+                                                <FileText className="h-3 w-3" />
+                                                {extracted} extracted
+                                            </span>
+                                            {computed > 0 && (
+                                                <span className="flex items-center gap-1">
+                                                    <Sparkles className="h-3 w-3" />
+                                                    {computed} computed
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    {profile.description && (
-                                        <p className="text-sm text-muted-foreground mb-2">
-                                            {profile.description}
-                                        </p>
-                                    )}
-                                    <div className="flex flex-wrap gap-1">
-                                        {profile.fields.slice(0, 6).map((field) => (
-                                            <span
-                                                key={field.key}
-                                                className="text-xs bg-muted px-2 py-0.5 rounded font-mono"
+                                    <div className="flex items-center gap-2">
+                                        {!profile.is_default && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleSetDefault(profile.id)}
                                             >
-                                                {field.label}
-                                            </span>
-                                        ))}
-                                        {profile.fields.length > 6 && (
-                                            <span className="text-xs text-muted-foreground">
-                                                +{profile.fields.length - 6} more
-                                            </span>
+                                                Set Default
+                                            </Button>
+                                        )}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => openEditor(profile)}
+                                        >
+                                            Edit
+                                        </Button>
+                                        {!profile.is_default && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => handleDelete(profile.id)}
+                                                className="text-destructive"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDuplicate(profile)}
-                                    >
-                                        Duplicate
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={() => openEditor(profile)}>
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleDelete(profile.id)}
-                                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+                            </CardContent>
+                        </Card>
+                    );
+                })}
             </div>
 
-            {/* Profile Editor Dialog */}
-            <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+            {/* Editor Dialog */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
-                            {editingProfile ? `Edit: ${editingProfile.name}` : "New Processing Profile"}
+                            {editingProfile ? "Edit Profile" : "New Profile"}
                         </DialogTitle>
+                        <DialogDescription>
+                            Define your data schema as it flows through the processing pipeline
+                        </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-6 py-4">
-                        {/* Basic Info */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Profile Name</Label>
+                    <div className="space-y-4 py-4">
+                        {/* Header: Name inline with breadcrumb tabs */}
+                        <div className="flex items-center gap-4 py-2">
+                            {/* Name & Description - Compact */}
+                            <div className="flex items-center gap-3 min-w-0">
                                 <Input
-                                    value={formName}
-                                    onChange={(e) => setFormName(e.target.value)}
-                                    placeholder="e.g., Default Profile"
+                                    value={formData.name}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, name: e.target.value })
+                                    }
+                                    placeholder="Profile name"
+                                    className="w-44 h-9 font-medium"
+                                />
+                                <Input
+                                    value={formData.description}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, description: e.target.value })
+                                    }
+                                    placeholder="Description (optional)"
+                                    className="w-48 h-9 text-sm"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Input
-                                    value={formDescription}
-                                    onChange={(e) => setFormDescription(e.target.value)}
-                                    placeholder="Optional description"
-                                />
+
+                            {/* Divider */}
+                            <div className="h-6 w-px bg-border" />
+
+                            {/* Flow Breadcrumb Tabs - Left aligned */}
+                            <div className="flex items-center gap-2 text-sm">
+                                <button
+                                    onClick={() => setActiveTab('intake')}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                                        activeTab === 'intake'
+                                            ? 'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 text-blue-700 dark:text-blue-300 ring-2 ring-inset ring-blue-400/50 dark:ring-blue-500/50 shadow-sm'
+                                            : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                    }`}
+                                >
+                                    <FileText className="h-4 w-4" />
+                                    <span className="font-medium">Intake</span>
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'intake' ? 'bg-blue-200/50 dark:bg-blue-800/50' : 'bg-muted'}`}>
+                                        {extractedCount}
+                                    </span>
+                                </button>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                                <button
+                                    onClick={() => setActiveTab('transform')}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                                        activeTab === 'transform'
+                                            ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 text-purple-700 dark:text-purple-300 ring-2 ring-inset ring-purple-400/50 dark:ring-purple-500/50 shadow-sm'
+                                            : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                    }`}
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    <span className="font-medium">Transform</span>
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'transform' ? 'bg-purple-200/50 dark:bg-purple-800/50' : 'bg-muted'}`}>
+                                        {computedCount}
+                                    </span>
+                                </button>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                                <button
+                                    onClick={() => setActiveTab('export')}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                                        activeTab === 'export'
+                                            ? 'bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 ring-2 ring-inset ring-slate-400/50 dark:ring-slate-500/50 shadow-sm'
+                                            : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                    }`}
+                                >
+                                    <Send className="h-4 w-4" />
+                                    <span className="font-medium">Export</span>
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'export' ? 'bg-slate-200/50 dark:bg-slate-700/50' : 'bg-muted'}`}>
+                                        {mappedCount}
+                                    </span>
+                                </button>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                id="is_default"
-                                checked={formIsDefault}
-                                onCheckedChange={(v) => setFormIsDefault(!!v)}
-                            />
-                            <Label htmlFor="is_default">Set as default profile</Label>
-                        </div>
-
-                        {/* Fields to Extract */}
-                        <div className="space-y-4">
-                            <div>
-                                <Label className="text-base font-semibold">Fields to Extract</Label>
-                                <p className="text-sm text-muted-foreground">
-                                    Define which fields GPT should extract. Link to lookups for normalization.
-                                </p>
-                            </div>
-
-                            {/* Fields list */}
-                            {formFields.length > 0 ? (
-                                <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
-                                    {formFields.map((field) => (
-                                        <div key={field.key} className="p-3 bg-background rounded-md border space-y-2">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <span className="font-medium truncate">{field.label}</span>
-                                                    <span className="text-xs text-muted-foreground ml-1">({field.key})</span>
-                                                </div>
-                                                {!field.use_template && (
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-muted-foreground whitespace-nowrap">Catalog:</span>
-                                                        <Select
-                                                            value={field.catalog_key || "none"}
-                                                            onValueChange={(v) => updateCatalogMatching(field.key, v === "none" ? null : v)}
-                                                        >
-                                                            <SelectTrigger className="w-28 h-8">
-                                                                <SelectValue placeholder="None" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="none">None</SelectItem>
-                                                                {lookupOptions.map((opt: LookupOption) => (
-                                                                    <SelectItem key={opt.field_key} value={opt.field_key}>
-                                                                        {opt.field_key}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => toggleFieldTemplate(field.key, !field.use_template)}
-                                                    className={`relative h-6 w-11 rounded-full p-0.5 transition-colors ${field.use_template ? "bg-primary" : "bg-muted"}`}
-                                                    title="Use template"
-                                                >
-                                                    <div className={`h-5 w-5 rounded-full bg-white transition-all ${field.use_template ? "translate-x-5" : "translate-x-0"}`} />
-                                                </button>
-                                                <span className="text-xs text-muted-foreground">Template</span>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                                    onClick={() => removeField(field.key)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                                            {field.use_template && (
-                                                                <TemplateInput
-                                                                    value={field.template || ''}
-                                                                    onChange={(value) => updateFieldTemplate(field.key, value)}
-                                                                    fields={formFields}
-                                                                    placeholder="e.g., {brand} - {name} ({color})"
-                                                                />
-                                                            )}
-                                                            {!field.use_template && (
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-xs text-muted-foreground whitespace-nowrap">Fallback:</span>
-                                                                    <Input
-                                                                        value={field.fallback || ''}
-                                                                        onChange={(e) => updateFieldFallback(field.key, e.target.value)}
-                                                                        placeholder="Default if empty"
-                                                                        className="text-sm h-8 w-32"
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="border rounded-lg p-6 text-center text-muted-foreground">
-                                    No fields defined yet. Add fields below.
-                                </div>
+                        {/* Tab Content */}
+                        <div className="mt-4">
+                            {activeTab === 'intake' && (
+                                <IntakeTab
+                                    fields={formData.fields}
+                                    onFieldsChange={handleFieldsChange}
+                                />
                             )}
 
-                            {/* Add field */}
-                            <div className="border-t pt-4 mt-4">
-                                <Label className="text-sm font-medium mb-2 block">Add Field</Label>
-                                <div className="flex items-end gap-3">
-                                    <div className="flex-1 space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Display Name</Label>
-                                        <Input
-                                            value={newFieldLabel}
-                                            onChange={(e) => setNewFieldLabel(e.target.value)}
-                                            placeholder="e.g., Product Name"
-                                        />
-                                    </div>
-                                    <div className="w-40 space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Field Key</Label>
-                                        <Input
-                                            value={newFieldKey}
-                                            onChange={(e) => setNewFieldKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                                            placeholder="product_name"
-                                            className="font-mono"
-                                        />
-                                    </div>
-                                    <Button
-                                        onClick={addField}
-                                        disabled={!newFieldKey.trim() || !newFieldLabel.trim()}
-                                    >
-                                        + Add
-                                    </Button>
-                                </div>
-                            </div>
+                            {activeTab === 'transform' && (
+                                <TransformTab
+                                    fields={formData.fields}
+                                    lookupOptions={lookupOptions}
+                                    skuTemplate={formData.sku_template}
+                                    generateSku={formData.generate_sku}
+                                    onFieldsChange={(fields) => setFormData({ ...formData, fields })}
+                                    onSkuTemplateChange={(template) =>
+                                        setFormData({ ...formData, sku_template: template })
+                                    }
+                                    onGenerateSkuChange={(generate) =>
+                                        setFormData({ ...formData, generate_sku: generate })
+                                    }
+                                />
+                            )}
+
+                            {activeTab === 'export' && (
+                                <ExportTab
+                                    exportConfigs={formData.export_configs}
+                                    fields={formData.fields}
+                                    defaultExportConfigIdx={formData.default_export_config_idx}
+                                    onExportConfigsChange={(configs) =>
+                                        setFormData({ ...formData, export_configs: configs })
+                                    }
+                                    onDefaultIdxChange={(idx) =>
+                                        setFormData({ ...formData, default_export_config_idx: idx })
+                                    }
+                                />
+                            )}
+                        </div>
+
+                        {/* Advanced: Prompt Additions */}
+                        <div className="space-y-2">
+                            <Label>Additional Prompt Instructions (Advanced)</Label>
+                            <textarea
+                                value={formData.prompt_additions}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, prompt_additions: e.target.value })
+                                }
+                                placeholder="Optional additional instructions for AI extraction..."
+                                className="w-full h-16 rounded-md border px-3 py-2 text-sm"
+                            />
                         </div>
                     </div>
 
                     <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsEditorOpen(false)}>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSave} disabled={isSaving || !formName}>
+                        <Button
+                            onClick={handleSave}
+                            disabled={isSaving || !formData.name || formData.fields.length === 0}
+                        >
                             {isSaving ? "Saving..." : "Save Profile"}
                         </Button>
                     </div>
