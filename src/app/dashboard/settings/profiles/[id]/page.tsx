@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
@@ -16,7 +17,7 @@ import { IntakeTab } from "@/components/settings/IntakeTab";
 import { TransformTab } from "@/components/settings/TransformTab";
 import { ExportTab } from "@/components/settings/ExportTab";
 import { ProfilePreviewTable } from "@/components/settings/ProfilePreviewTable";
-import { ArrowLeft, FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy } from "lucide-react";
+import { FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy, Pencil } from "lucide-react";
 
 interface LookupOption {
     field_key: string;
@@ -215,40 +216,43 @@ export default function ProfileEditorPage() {
     }
 
     return (
-        <div className="h-screen flex flex-col bg-background">
-            {/* Header - Minimal, no background */}
-            <header className="px-6 py-4 flex items-center justify-between border-b border-border/60">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={handleNavigateBack}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        Profiles
-                    </button>
-                    <div className="h-6 w-px bg-border/50" />
-                    <div className="flex items-center gap-3">
-                        <Input
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="w-64 h-10 font-semibold text-lg border-none shadow-none focus-visible:ring-0 bg-transparent"
-                            placeholder="Profile name"
-                        />
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="flex items-center gap-3 mb-1">
+                        <h2 className="text-2xl font-bold tracking-tight">
+                            {formData.name || "Untitled Profile"}
+                        </h2>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                                const newName = prompt("Profile name:", formData.name);
+                                if (newName !== null) {
+                                    setFormData({ ...formData, name: newName });
+                                }
+                            }}
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </Button>
                         {isDirty && (
-                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-xs text-amber-600 dark:text-amber-400">
+                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
                                 <CircleDot className="h-3 w-3" />
                                 Unsaved
                             </span>
                         )}
                     </div>
+                    <p className="text-muted-foreground">
+                        {formData.description || "No description"} • {extractedCount} source fields • {computedCount} virtual fields
+                    </p>
                 </div>
+
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleNavigateBack}
-                        className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
-                    >
-                        Cancel
-                    </button>
+                    <Button variant="outline" onClick={handleNavigateBack}>
+                        Back
+                    </Button>
                     {!isNew && (
                         <Button 
                             variant="outline" 
@@ -283,21 +287,21 @@ export default function ProfileEditorPage() {
                             className="gap-1.5"
                         >
                             <Copy className="h-4 w-4" />
-                            Save as New
+                            Save as Copy
                         </Button>
                     )}
-                    <Button onClick={handleSave} disabled={isSaving || !formData.name} className="gap-1.5 min-w-[120px]">
+                    <Button onClick={handleSave} disabled={isSaving || !formData.name} className="gap-1.5">
                         {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {isSaving ? "Saving..." : "Save Profile"}
                     </Button>
                 </div>
-            </header>
+            </div>
 
-            {/* Split Layout */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Left Pane - Steps (60%) */}
-                <div className="w-[60%] border-r overflow-y-auto">
-                    <div className="p-6 space-y-6">
+            {/* Split Layout Card */}
+            <Card className="overflow-hidden min-h-[600px]">
+                <div className="flex h-full">
+                    {/* Left Pane - Editor (60%) */}
+                    <div className="w-[60%] border-r p-6 space-y-6">
                         {/* Description */}
                         <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">Description</Label>
@@ -313,15 +317,15 @@ export default function ProfileEditorPage() {
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setActiveTab('intake')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'intake'
                                         ? 'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 text-blue-700 dark:text-blue-300 ring-2 ring-inset ring-blue-400/50 shadow-sm'
-                                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
                                 }`}
                             >
                                 <FileText className="h-4 w-4" />
                                 <div className="text-left">
-                                    <div className="font-medium text-sm">PDF Extraction</div>
+                                    <div className="font-medium text-sm">Source Fields</div>
                                     <div className="text-xs opacity-70">What is AI looking for?</div>
                                 </div>
                                 <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'intake' ? 'bg-blue-200/50 dark:bg-blue-800/50' : 'bg-muted'}`}>
@@ -331,16 +335,16 @@ export default function ProfileEditorPage() {
                             <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
                             <button
                                 onClick={() => setActiveTab('transform')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'transform'
                                         ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 text-purple-700 dark:text-purple-300 ring-2 ring-inset ring-purple-400/50 shadow-sm'
-                                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
                                 }`}
                             >
                                 <Sparkles className="h-4 w-4" />
                                 <div className="text-left">
-                                    <div className="font-medium text-sm">Logic & Enrichment</div>
-                                    <div className="text-xs opacity-70">Add virtual fields & AI</div>
+                                    <div className="font-medium text-sm">Virtual Fields</div>
+                                    <div className="text-xs opacity-70">Computed & AI-enriched</div>
                                 </div>
                                 <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'transform' ? 'bg-purple-200/50 dark:bg-purple-800/50' : 'bg-muted'}`}>
                                     {computedCount}
@@ -349,16 +353,16 @@ export default function ProfileEditorPage() {
                             <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
                             <button
                                 onClick={() => setActiveTab('export')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'export'
                                         ? 'bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 ring-2 ring-inset ring-slate-400/50 shadow-sm'
-                                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
                                 }`}
                             >
                                 <Send className="h-4 w-4" />
                                 <div className="text-left">
-                                    <div className="font-medium text-sm">Destination Mapping</div>
-                                    <div className="text-xs opacity-70">Map to target columns</div>
+                                    <div className="font-medium text-sm">Export Mapping</div>
+                                    <div className="text-xs opacity-70">Map to destinations</div>
                                 </div>
                                 <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'export' ? 'bg-slate-200/50 dark:bg-slate-700/50' : 'bg-muted'}`}>
                                     {mappedCount}
@@ -424,16 +428,16 @@ export default function ProfileEditorPage() {
                             </div>
                         </details>
                     </div>
-                </div>
 
-                {/* Right Pane - Preview (40%) */}
-                <div className="w-[40%] bg-gradient-to-br from-muted/20 to-muted/40 p-6 sticky top-0">
-                    <ProfilePreviewTable
-                        fields={formData.fields}
-                        exportConfig={formData.export_configs[formData.default_export_config_idx]}
-                    />
+                    {/* Right Pane - Preview (40%) */}
+                    <div className="w-[40%] bg-gradient-to-br from-muted/20 to-muted/40 p-6">
+                        <ProfilePreviewTable
+                            fields={formData.fields}
+                            exportConfig={formData.export_configs[formData.default_export_config_idx]}
+                        />
+                    </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

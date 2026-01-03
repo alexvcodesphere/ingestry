@@ -13,6 +13,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Trash2, Pencil } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { PageHeader } from "@/components/layout";
 import type { DraftOrder, DraftOrderStatus, TenantUserProfile } from "@/types";
 
 const statusConfig: Record<DraftOrderStatus, { label: string; className: string }> = {
@@ -271,18 +272,15 @@ export default function OrdersPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Orders</h2>
-                    <p className="text-sm text-muted-foreground">
-                        Manage your order processing pipeline
-                    </p>
-                </div>
-                <Link href="/dashboard/orders/new">
-                    <Button>+ New Order</Button>
-                </Link>
-            </div>
+            <PageHeader
+                title="Orders"
+                description="Manage your order processing pipeline"
+                actions={
+                    <Link href="/dashboard/orders/new">
+                        <Button>+ New Order</Button>
+                    </Link>
+                }
+            />
 
             {/* Filters */}
             <div className="flex items-center gap-2">

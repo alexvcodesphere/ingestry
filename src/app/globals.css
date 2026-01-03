@@ -6,6 +6,8 @@
 
 :root {
   --radius: 0.625rem;
+  --radius-card: 1rem;    /* 16px - major containers */
+  --radius-ui: 0.75rem;   /* 12px - inputs, buttons */
 }
 
 @theme inline {
@@ -228,5 +230,45 @@
                 linear-gradient(135deg, oklch(0.55 0.18 132), oklch(0.6 0.18 160), oklch(0.55 0.18 132)) border-box;
     border: 2px solid transparent;
     border-radius: var(--radius);
+  }
+
+  /* Level 1 Glass Surface - Layered Design System */
+  .glass-surface {
+    @apply bg-card/60 backdrop-blur-md ring-1 ring-inset ring-border/50 shadow-sm;
+  }
+
+  /* Magical shimmer animation for Spark button */
+  .spark-shimmer {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+  .spark-shimmer::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -100%;
+    width: 150%;
+    height: 200%;
+    background: linear-gradient(
+      120deg,
+      transparent 35%,
+      oklch(0.68 0.22 295 / 0.2) 45%,
+      oklch(0.65 0.18 320 / 0.15) 50%,
+      oklch(0.68 0.22 295 / 0.2) 55%,
+      transparent 65%
+    );
+    filter: blur(20px);
+    opacity: 0;
+    transition: opacity 0s, left 0s;
+  }
+  .spark-shimmer:hover::before {
+    opacity: 1;
+    left: 100%;
+    transition: opacity 0s, left 0.5s ease-out;
+  }
+  .spark-shimmer:hover {
+    border-color: oklch(0.68 0.22 295 / 0.4);
+    box-shadow: 0 0 12px -2px oklch(0.68 0.22 295 / 0.25);
   }
 }

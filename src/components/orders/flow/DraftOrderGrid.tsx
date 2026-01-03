@@ -479,7 +479,7 @@ export function DraftOrderGrid({
                 </div>
             </div>
 
-            <div className={`rounded-md border overflow-hidden`}>
+            <div className={`rounded-lg border overflow-hidden`}>
                 <Table containerClassName="max-h-[600px]">
                 <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

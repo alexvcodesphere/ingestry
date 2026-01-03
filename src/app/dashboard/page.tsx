@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { createClient } from "@/lib/supabase/client";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { PageHeader } from "@/components/layout";
 import type { Job, TenantUserProfile } from "@/types";
 
 // Live timer component that updates every second
@@ -270,16 +271,15 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Process orders, validate products, push to shop systems</p>
-                </div>
-                <Link href="/dashboard/orders/new">
-                    <Button>New Order</Button>
-                </Link>
-            </div>
+            <PageHeader
+                title="Dashboard"
+                description="Process orders, validate products, push to shop systems"
+                actions={
+                    <Link href="/dashboard/orders/new">
+                        <Button>New Order</Button>
+                    </Link>
+                }
+            />
 
             {/* Stat Cards */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

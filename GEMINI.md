@@ -79,15 +79,47 @@ The project uses Tailwind CSS for styling, with components from shadcn/ui. Pleas
 
 ### Styling & Design System
 
-Custom DLS extending shadcn/ui with "Modern App" aesthetics:
+Custom DLS extending shadcn/ui with "Modern App" aesthetics and Layered Design System.
 
-#### The "Frame" (Surfaces)
+#### Spatial Philosophy (3 Levels)
 
-- **Cards**: `border border-border/60 ring-1 ring-inset ring-border/50 rounded-xl`
-- **Nested Areas**: `bg-muted/30` or `bg-muted/50`
-- **Inputs/Buttons**: `rounded-lg`
+| Level | Name    | Styling                                                                    |
+| ----- | ------- | -------------------------------------------------------------------------- |
+| 0     | Canvas  | `bg-gradient-to-br from-background to-muted/40`                            |
+| 1     | Surface | `bg-card/60 backdrop-blur-md ring-1 ring-inset ring-border/50 rounded-2xl` |
+| 2     | Overlay | `bg-card/95 backdrop-blur-sm shadow-xl ring-1 ring-border/50 rounded-xl`   |
 
-#### The "Lineage" Color System
+> **Never stack Level 1 surfaces.** Nested cards use `bg-muted/30` or `bg-muted/50`.
 
-- **Source (S)**: Blue accents (`bg-blue-50/50`, `bg-blue-100` badges)
-- **Virtual (V)**: Purple accents (`bg-purple-50/50`, `bg-purple-100` badges)
+#### Mandatory Rules
+
+- **Soft Ring Rule**: `border` must always be paired with `ring-1 ring-inset ring-border/50`
+- **No Hex Codes**: Use only Tailwind theme variables (`text-primary`, `bg-violet/10`)
+- **Tactile Feedback**: All clickable elements: `active:scale-[0.98]`
+- **Consistent Blur**: Always use `backdrop-blur-md` for glass surfaces
+
+#### Form Elements (Glassmorphic)
+
+```
+bg-muted/40 border-border/40 focus:bg-background
+focus-visible:ring-2 focus-visible:ring-primary/40
+```
+
+#### Lineage Color System
+
+| Type        | Backgrounds (light/dark)               | Badges (light/dark)                  |
+| ----------- | -------------------------------------- | ------------------------------------ |
+| Source (S)  | `bg-blue-50/30` / `bg-blue-950/20`     | `bg-blue-100` / `bg-blue-900/80`     |
+| Virtual (V) | `bg-purple-50/30` / `bg-purple-950/20` | `bg-purple-100` / `bg-purple-900/80` |
+
+#### oklch Color Values
+
+```css
+/* Primary (violet) */
+--primary: oklch(0.55 0.22 295); /* light */
+--primary: oklch(0.68 0.22 295); /* dark */
+
+/* Virtual fields */
+--violet: oklch(0.55 0.18 295); /* light */
+--violet: oklch(0.65 0.18 295); /* dark */
+```

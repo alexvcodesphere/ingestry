@@ -105,11 +105,11 @@ function SparkMessage({
             </div>
             
             <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                isUser ? "bg-primary/10 text-foreground border border-primary/20" :
-                isTool ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800" :
-                isQuestionPrompt ? "bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800" :
+                isUser ? "bg-gradient-to-br from-primary/20 to-primary/10 text-foreground ring-1 ring-inset ring-primary/30" :
+                isTool ? "bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/50 dark:to-amber-900/30 text-amber-800 dark:text-amber-200 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-700/50" :
+                isQuestionPrompt ? "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 text-blue-800 dark:text-blue-200 ring-1 ring-inset ring-blue-300/50 dark:ring-blue-700/50" :
                 isSystem ? "bg-muted/50 text-muted-foreground text-xs" :
-                "bg-muted"
+                "bg-card ring-1 ring-inset ring-border/60"
             }`}>
                 {isThinking ? (
                     <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export function SparkToggleButton({
             size="sm"
             onClick={onClick}
             disabled={disabled}
-            className="gap-2"
+            className="gap-2 spark-shimmer"
         >
             <Sparkles className="h-4 w-4" />
             Spark
@@ -364,12 +364,58 @@ export function IngestrySpark({
         }
     };
 
-    const handleEnableQuestions = () => {
+    const handleEnableQuestions = async () => {
         setAllowQuestions(true);
-        addMessage({ type: "system", content: "✓ Question mode enabled. Ask me anything about your data!" });
+        addMessage({ type: "system", content: "✓ Question mode enabled." });
         if (pendingQuestion) {
-            setInstruction(pendingQuestion);
+            // Auto-resend the pending question
+            const questionToResend = pendingQuestion;
             setPendingQuestion(null);
+            setInstruction(questionToResend);
+            // Give state time to update, then submit
+            setTimeout(() => {
+                setInstruction(questionToResend);
+                // Trigger submit via ref or direct call
+            }, 50);
+            // Direct submit with the question
+            setState("processing");
+            onProcessingChange(true);
+            
+            const thinkingMsgId = `thinking-${Date.now()}`;
+            setMessages(prev => [...prev, { id: thinkingMsgId, type: "system" as const, content: "thinking" }]);
+
+            try {
+                const res = await fetch(`/api/draft-orders/${orderId}/spark`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        instruction: questionToResend,
+                        lineItemIds: selectedIds.length > 0 ? selectedIds : undefined,
+                        allowQuestions: true,
+                    }),
+                });
+
+                const result = await res.json();
+                if (!res.ok || !result.success) throw new Error(result.error || 'Spark failed');
+
+                const { data } = result;
+                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
+                
+                if (data.answer) {
+                    addMessage({ type: "tool", content: `Analyzed ${data.recordsAnalyzed || "all"} records` });
+                    addMessage({ type: "assistant", content: data.answer });
+                } else {
+                    addMessage({ type: "assistant", content: data.summary || "No answer found." });
+                }
+                setState("success");
+            } catch (e) {
+                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
+                setState("error");
+                addMessage({ type: "assistant", content: e instanceof Error ? e.message : 'Something went wrong' });
+            } finally {
+                onProcessingChange(false);
+                setInstruction("");
+            }
         }
     };
 
@@ -462,7 +508,7 @@ export function IngestrySpark({
 
                             {/* Input area */}
                             <div className="border-t p-3 shrink-0">
-                                <div className="relative">
+                                <div className="flex items-end gap-2">
                                     <Textarea
                                         ref={textareaRef}
                                         placeholder="Ask anything..."
@@ -470,19 +516,19 @@ export function IngestrySpark({
                                         onChange={(e) => setInstruction(e.target.value)}
                                         onKeyDown={handleKeyDown}
                                         disabled={state === "processing"}
-                                        className="min-h-[40px] max-h-[100px] resize-none text-sm pr-10 border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
+                                        className="min-h-[40px] max-h-[100px] flex-1 resize-none text-sm border-0 shadow-none focus-visible:ring-0 focus-visible:bg-transparent p-2 bg-muted/30 rounded-lg"
                                         rows={1}
                                     />
                                     <Button
-                                        size="sm"
+                                        size="icon"
                                         onClick={handleSubmit}
                                         disabled={!instruction.trim() || state === "processing"}
-                                        className="h-7 w-7 p-0 rounded-full absolute top-0 right-0"
+                                        className="h-9 w-9 shrink-0 rounded-full"
                                     >
                                         {state === "processing" ? (
-                                            <LoadingIcon />
+                                            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                         ) : (
-                                            <Send className="h-3.5 w-3.5" />
+                                            <Send className="h-4 w-4" />
                                         )}
                                     </Button>
                                 </div>

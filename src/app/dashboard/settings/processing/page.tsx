@@ -10,8 +10,9 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { PageHeader } from "@/components/layout";
 import type { ProcessingProfile } from "@/types";
-import { Trash2, FileText, Sparkles, Plus, ExternalLink } from "lucide-react";
+import { Trash2, FileText, Star, Plus } from "lucide-react";
 
 export default function ProcessingProfilesPage() {
     const router = useRouter();
@@ -64,23 +65,21 @@ export default function ProcessingProfilesPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-xl font-semibold">Profiles</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Configure extraction, transformation, and export pipelines
-                    </p>
-                </div>
-                <Button onClick={() => router.push("/dashboard/settings/profiles/new")} className="gap-1.5">
-                    <Plus className="h-4 w-4" />
-                    New Profile
-                </Button>
-            </div>
+            <PageHeader
+                title="Profiles"
+                description="Configure extraction, transformation, and export pipelines"
+                actions={
+                    <Button onClick={() => router.push("/dashboard/settings/profiles/new")} className="gap-1.5">
+                        <Plus className="h-4 w-4" />
+                        New Profile
+                    </Button>
+                }
+            />
 
-            {/* Profiles List */}
-            <div className="grid gap-3">
+            {/* Profiles Gallery */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {profiles.length === 0 ? (
-                    <Card>
+                    <Card className="col-span-full">
                         <CardContent className="py-12 text-center text-muted-foreground">
                             <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
                             <p className="font-medium">No profiles yet</p>
@@ -100,89 +99,73 @@ export default function ProcessingProfilesPage() {
                         const exportConfig = profile.export_configs?.[profile.default_export_config_idx ?? 0];
                         
                         return (
-                            <div 
-                                key={profile.id} 
-                                className={`group p-4 rounded-lg border bg-card transition-all hover:ring-2 hover:ring-inset hover:ring-primary/20 ${
+                            <div
+                                key={profile.id}
+                                onClick={() => router.push(`/dashboard/settings/profiles/${profile.id}`)}
+                                className={`group relative p-4 rounded-xl cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
                                     profile.is_default 
-                                        ? 'ring-2 ring-inset ring-primary/30 bg-primary/[0.02]' 
-                                        : 'ring-1 ring-inset ring-border/50'
+                                        ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 ring-2 ring-inset ring-purple-400/50 shadow-sm' 
+                                        : 'bg-card ring-1 ring-inset ring-border/60 hover:ring-2 hover:ring-primary/30 hover:shadow-sm'
                                 }`}
                             >
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        {/* Header */}
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                            <h4 className="font-semibold text-base truncate">{profile.name}</h4>
-                                            {profile.is_default && (
-                                                <span className="text-[10px] font-semibold uppercase tracking-wide bg-primary/15 text-primary px-2 py-0.5 rounded shrink-0">
-                                                    Default
-                                                </span>
-                                            )}
-                                        </div>
-                                        
-                                        {/* Description */}
-                                        {profile.description && (
-                                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                                                {profile.description}
-                                            </p>
-                                        )}
-                                        
-                                        {/* Stats Row */}
-                                        <div className="flex flex-wrap items-center gap-3 text-xs">
-                                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                                {extracted} source
-                                            </span>
-                                            {computed > 0 && (
-                                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                                                    <Sparkles className="h-3 w-3" />
-                                                    {computed} virtual
-                                                </span>
-                                            )}
-                                            {exportConfig && (
-                                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-muted text-muted-foreground">
-                                                    → {exportConfig.shop_system}
-                                                    <span className="text-emerald-600 dark:text-emerald-400">
-                                                        ({exportConfig.field_mappings?.length || 0})
-                                                    </span>
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Actions */}
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        {!profile.is_default && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleSetDefault(profile.id)}
-                                                className="text-xs h-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                {/* Actions (top-right, hover only) */}
+                                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {!profile.is_default && (
+                                        <>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSetDefault(profile.id);
+                                                }}
+                                                className="p-1.5 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
+                                                title="Set as default"
                                             >
-                                                Set Default
-                                            </Button>
-                                        )}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => router.push(`/dashboard/settings/profiles/${profile.id}`)}
-                                            className="gap-1.5 h-8"
-                                        >
-                                            Edit
-                                            <ExternalLink className="h-3 w-3" />
-                                        </Button>
-                                        {!profile.is_default && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => handleDelete(profile.id)}
-                                                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                <Star className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(profile.id);
+                                                }}
+                                                className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                             >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
+
+                                {/* Header */}
+                                <div className="flex items-center gap-2 mb-2 pr-16">
+                                    {profile.is_default && (
+                                        <Star className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                                    )}
+                                    <h4 className="font-semibold truncate">{profile.name}</h4>
+                                </div>
+                                
+                                {/* Description */}
+                                <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem] mb-4">
+                                    {profile.description || "No description"}
+                                </p>
+                                
+                                {/* Stats Row */}
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                        {extracted} source
+                                    </span>
+                                    {computed > 0 && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                                            {computed} virtual
+                                        </span>
+                                    )}
+                                    {exportConfig && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-muted text-muted-foreground">
+                                            → {exportConfig.shop_system}
+                                        </span>
+                                    )}
+                                </div>
+
+
                             </div>
                         );
                     })

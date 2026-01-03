@@ -73,13 +73,32 @@
 
 #### UI/UX Conventions
 
-| Convention           | Description                                                                            |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| **Card Styling**     | `border border-border/60` with `ring-1 ring-inset ring-border/50` for subtle elevation |
-| **Backgrounds**      | Primary containers: `bg-card`; nested areas: `bg-muted/30` or `bg-muted/50`            |
-| **Rounded Corners**  | Cards: `rounded-xl`; inputs/buttons: `rounded-lg`                                      |
-| **Source Data (S)**  | Blue accents; tables use `bg-blue-50/50`, badges use `bg-blue-100`                     |
-| **Virtual Data (V)** | Purple accents for AI data; tables use `bg-purple-50/50`, badges use `bg-purple-100`   |
+**Spatial Philosophy (Layered Design System)**
+
+| Level | Name    | Usage             | Styling                                                                    |
+| ----- | ------- | ----------------- | -------------------------------------------------------------------------- |
+| 0     | Canvas  | Global background | `bg-gradient-to-br from-background to-muted/40`                            |
+| 1     | Surface | Page containers   | `bg-card/60 backdrop-blur-md ring-1 ring-inset ring-border/50 rounded-2xl` |
+| 2     | Overlay | Dialogs, popovers | `bg-card/95 backdrop-blur-sm shadow-xl ring-1 ring-border/50 rounded-xl`   |
+
+> **Never stack Level 1 surfaces.** Nested cards use `bg-muted/30` or `bg-muted/50`.
+
+**Core Styling Rules**
+
+| Convention              | Description                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| **Soft Ring Mandatory** | `border` must always be paired with `ring-1 ring-inset ring-border/50`           |
+| **Rounded Corners**     | Cards: `rounded-2xl`; inputs/buttons: `rounded-lg`                               |
+| **Glassmorphic Forms**  | `bg-muted/40 border-border/40 focus:bg-background focus-visible:ring-primary/40` |
+| **Tactile Feedback**    | All clickables: `active:scale-[0.98]`                                            |
+| **Hover States**        | Interactive surfaces: `hover:bg-muted/60`                                        |
+
+**Lineage Color System**
+
+| Type        | Usage                   | Backgrounds                            | Badges                               |
+| ----------- | ----------------------- | -------------------------------------- | ------------------------------------ |
+| Source (S)  | Extracted from document | `bg-blue-50/30` / `bg-blue-950/20`     | `bg-blue-100` / `bg-blue-900/80`     |
+| Virtual (V) | Computed/AI-enriched    | `bg-purple-50/30` / `bg-purple-950/20` | `bg-purple-100` / `bg-purple-900/80` |
 
 ---
 
