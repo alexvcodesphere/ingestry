@@ -27,6 +27,7 @@ import { Plus, Sparkles, Calculator, Trash2, Wand2, ChevronDown, Search } from "
 
 interface CatalogOption {
     field_key: string;
+    custom_columns?: string[];
 }
 
 interface TransformTabProps {
@@ -49,6 +50,17 @@ export function TransformTab({
     const [catalogOpen, setCatalogOpen] = useState(true);
     const [computedSearch, setComputedSearch] = useState("");
     const [catalogSearch, setCatalogSearch] = useState("");
+
+    // Create map of catalog_key -> custom_columns for TemplateInput
+    const customColumnsMap = useMemo(() => {
+        const map: Record<string, string[]> = {};
+        for (const opt of catalogOptions) {
+            if (opt.custom_columns && opt.custom_columns.length > 0) {
+                map[opt.field_key] = opt.custom_columns;
+            }
+        }
+        return map;
+    }, [catalogOptions]);
 
     // Memoize filtered fields for performance
     const extractedFields = useMemo(() => 
@@ -244,7 +256,8 @@ export function TransformTab({
                                                             onChange={(v) =>
                                                                 handleFieldUpdate(field.key, { template: v })
                                                             }
-                                                            variables={availableVars}
+                                                            fields={extractedFields}
+                                                            catalogCustomColumns={customColumnsMap}
                                                             placeholder="{brand}-{category:2}{color:2}{sequence:3}"
                                                             className="h-8"
                                                         />

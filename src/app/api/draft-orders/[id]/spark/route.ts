@@ -140,7 +140,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             instruction,
             auditData,
             fieldSchema,
-            { catalogGuide, model: sparkModel, conversationHistory, allowQuestions }
+            { 
+                catalogGuide, 
+                model: sparkModel, 
+                conversationHistory, 
+                allowQuestions,
+                fields: profileFields 
+            }
         );
         log(`Spark complete: ${result.status}, ${result.patches.length} patches`);
 

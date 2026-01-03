@@ -21,6 +21,7 @@ import { FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy,
 
 interface CatalogOption {
     field_key: string;
+    custom_columns?: string[];
 }
 
 export default function ProfileEditorPage() {
@@ -126,13 +127,30 @@ export default function ProfileEditorPage() {
 
     const fetchCatalogOptions = useCallback(async () => {
         const supabase = createClient();
-        const { data } = await supabase
-            .from("catalog_entries")
-            .select("field_key")
-            .order("field_key");
-        if (data) {
-            const unique = [...new Set(data.map((d) => d.field_key))];
-            setCatalogOptions(unique.map((fk) => ({ field_key: fk })));
+        
+        // Fetch catalogs (entries) and their custom field definitions in parallel
+        const [entriesRes, fieldsRes] = await Promise.all([
+            supabase.from("catalog_entries").select("field_key").order("field_key"),
+            supabase.from("catalog_fields").select("field_key, column_key")
+        ]);
+
+        if (entriesRes.data) {
+            const uniqueKeys = [...new Set(entriesRes.data.map((d) => d.field_key))];
+            
+            // Group custom columns by catalog key
+            const customColumnsMap = new Map<string, string[]>();
+            if (fieldsRes.data) {
+                for (const f of fieldsRes.data) {
+                    const existing = customColumnsMap.get(f.field_key) || [];
+                    existing.push(f.column_key);
+                    customColumnsMap.set(f.field_key, existing);
+                }
+            }
+
+            setCatalogOptions(uniqueKeys.map((fk) => ({ 
+                field_key: fk,
+                custom_columns: customColumnsMap.get(fk) || [] 
+            })));
         }
     }, []);
 

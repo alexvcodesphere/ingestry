@@ -11,6 +11,7 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Search, Braces } from "lucide-react";
 
@@ -35,6 +36,7 @@ interface BaseProps {
     onChange: (value: string) => void;
     placeholder?: string;
     className?: string;
+    catalogCustomColumns?: Record<string, string[]>;
 }
 
 // Props with fields (rich metadata)
@@ -51,7 +53,11 @@ interface VariablesProps extends BaseProps {
 
 export type TemplateInputProps = FieldsProps | VariablesProps;
 
-function buildSuggestions(fields?: FieldConfig[], variables?: string[]): Suggestion[] {
+function buildSuggestions(
+    fields?: FieldConfig[], 
+    variables?: string[],
+    catalogCustomColumns?: Record<string, string[]>
+): Suggestion[] {
     const suggestions: Suggestion[] = [];
 
     // Add sequence (always available)
@@ -81,6 +87,25 @@ function buildSuggestions(fields?: FieldConfig[], variables?: string[]): Suggest
                     description: `Code from ${field.catalog_key} catalog`,
                     insertText: `{${field.key}.code}`,
                 });
+                
+                // Add known custom columns
+                const customCols = catalogCustomColumns?.[field.catalog_key];
+                if (customCols && customCols.length > 0) {
+                    for (const col of customCols) {
+                        suggestions.push({
+                            text: `${field.key}.${col}`,
+                            description: `Custom: ${col}`,
+                            insertText: `{${field.key}.${col}}`,
+                        });
+                    }
+                } else {
+                    // Fallback hint for custom columns
+                    suggestions.push({
+                        text: `${field.key}.custom_col`,
+                        description: `Custom column from ${field.catalog_key}`,
+                        insertText: `{${field.key}.`,
+                    });
+                }
             }
         }
     }
@@ -100,20 +125,28 @@ function buildSuggestions(fields?: FieldConfig[], variables?: string[]): Suggest
 }
 
 export function TemplateInput(props: TemplateInputProps) {
-    const { value, onChange, placeholder = "e.g. {brand}-{color:2}", className } = props;
+    const { 
+        value, 
+        onChange, 
+        placeholder = "e.g. {brand}-{color:2}", 
+        className,
+        catalogCustomColumns 
+    } = props;
     const fields = 'fields' in props ? props.fields : undefined;
     const variables = 'variables' in props ? props.variables : undefined;
 
     const inputRef = React.useRef<HTMLInputElement>(null);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
+    const listRef = React.useRef<HTMLDivElement>(null);
     const [showDropdown, setShowDropdown] = React.useState(false);
     const [search, setSearch] = React.useState("");
     const [cursorPosition, setCursorPosition] = React.useState(0);
     const [highlightedIndex, setHighlightedIndex] = React.useState(0);
+    const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number; width: number } | null>(null);
 
     const suggestions = React.useMemo(
-        () => buildSuggestions(fields, variables),
-        [fields, variables]
+        () => buildSuggestions(fields, variables, catalogCustomColumns),
+        [fields, variables, catalogCustomColumns]
     );
 
     const filteredSuggestions = React.useMemo(() => {
@@ -125,6 +158,51 @@ export function TemplateInput(props: TemplateInputProps) {
                 s.description.toLowerCase().includes(lowerSearch)
         );
     }, [suggestions, search]);
+
+    // Scroll highlighted item into view
+    React.useEffect(() => {
+        if (showDropdown && listRef.current) {
+            const highlightedElement = listRef.current.children[highlightedIndex] as HTMLElement;
+            if (highlightedElement) {
+                highlightedElement.scrollIntoView({ block: "nearest" });
+            }
+        }
+    }, [highlightedIndex, showDropdown]);
+
+    // Update dropdown position when shown
+    React.useLayoutEffect(() => {
+        if (showDropdown && inputRef.current) {
+            const rect = inputRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY,
+                left: rect.left + window.scrollX,
+                width: rect.width,
+            });
+        }
+    }, [showDropdown]);
+
+    // Update position on scroll/resize
+    React.useEffect(() => {
+        if (!showDropdown) return;
+        
+        const updatePos = () => {
+            if (inputRef.current) {
+                const rect = inputRef.current.getBoundingClientRect();
+                setDropdownPosition({
+                    top: rect.bottom + window.scrollY,
+                    left: rect.left + window.scrollX,
+                    width: rect.width,
+                });
+            }
+        };
+
+        window.addEventListener('scroll', updatePos, true);
+        window.addEventListener('resize', updatePos);
+        return () => {
+            window.removeEventListener('scroll', updatePos, true);
+            window.removeEventListener('resize', updatePos);
+        };
+    }, [showDropdown]);
 
     // Handle input change
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,18 +308,24 @@ export function TemplateInput(props: TemplateInputProps) {
                 onClick={handleSelect}
                 placeholder={placeholder}
                 className={cn(
-                    "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                    "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                    "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-border/60 ring-1 ring-inset ring-border/50 h-9 w-full min-w-0 rounded-lg border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:bg-background",
                     "font-mono",
                     className
                 )}
             />
 
-            {/* Autocomplete Dropdown */}
-            {showDropdown && (
+            {/* Autocomplete Dropdown - Rendered in Portal to avoid overflow clipping */}
+            {showDropdown && dropdownPosition && createPortal(
                 <div
                     ref={dropdownRef}
-                    className="absolute z-50 top-full left-0 mt-1 w-full max-w-xs bg-card/95 backdrop-blur-sm border border-border/60 ring-1 ring-inset ring-border/50 rounded-xl shadow-xl overflow-hidden"
+                    className="fixed z-50 bg-card/95 backdrop-blur-md border border-border ring-1 ring-inset ring-border/50 rounded-2xl shadow-xl overflow-hidden"
+                    style={{
+                        top: dropdownPosition.top + 4, // Add slight offset
+                        left: dropdownPosition.left,
+                        width: Math.max(300, dropdownPosition.width), // Min width 300px
+                        maxHeight: '300px'
+                    }}
                 >
                     {/* Search Header */}
                     <div className="px-3 py-2.5 border-b border-border/40 bg-muted/40">
@@ -262,7 +346,10 @@ export function TemplateInput(props: TemplateInputProps) {
                     </div>
 
                     {/* Variable List */}
-                    <div className="max-h-48 overflow-y-auto">
+                    <div 
+                        ref={listRef}
+                        className="max-h-56 overflow-y-auto"
+                    >
                         {filteredSuggestions.length === 0 ? (
                             <div className="p-3 text-sm text-muted-foreground text-center">
                                 No variables found
@@ -277,7 +364,7 @@ export function TemplateInput(props: TemplateInputProps) {
                                     className={cn(
                                         "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
                                         i === highlightedIndex
-                                            ? "bg-accent text-accent-foreground"
+                                            ? "bg-primary/10 text-primary"
                                             : "hover:bg-muted/50"
                                     )}
                                 >
@@ -285,7 +372,7 @@ export function TemplateInput(props: TemplateInputProps) {
                                     <code className="font-mono text-xs bg-muted px-1 rounded">
                                         {suggestion.insertText}
                                     </code>
-                                    <span className="text-muted-foreground text-xs ml-auto truncate max-w-[120px]">
+                                    <span className="text-muted-foreground text-xs ml-auto truncate max-w-[140px]">
                                         {suggestion.description}
                                     </span>
                                 </button>
@@ -294,11 +381,12 @@ export function TemplateInput(props: TemplateInputProps) {
                     </div>
 
                     {/* Footer Hint */}
-                    <div className="px-3 py-2 border-t border-border/40 bg-muted/40 text-[11px] text-muted-foreground flex items-center justify-between">
+                    <div className="px-3 py-2 border-t border-border/40 bg-muted/40 text-[10px] text-muted-foreground flex items-center justify-between">
                         <span>↑↓ navigate • Enter to select</span>
-                        <span>:2 = first 2 chars</span>
+                        <span className="font-mono">:2 (len)</span>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

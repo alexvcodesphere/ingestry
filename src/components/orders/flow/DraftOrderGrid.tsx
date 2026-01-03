@@ -40,7 +40,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { EditableCell } from "./EditableCell";
 import { StatusBadge } from "./StatusBadge";
 import type { DraftLineItem, NormalizedProduct, LineItemStatus, FieldDefinition, ExportConfig } from "@/types";
@@ -231,6 +231,10 @@ export function DraftOrderGrid({
                     item.validation_errors?.some(e => e.field === field.key)
                 );
                 
+                // Get template info if applicable
+                const fieldDef = profileFields.find(f => f.key === field.key);
+                const template = fieldDef?.logic_type === 'template' ? fieldDef.template : null;
+
                 return (
                     <button
                         className="flex items-center gap-1.5 hover:text-foreground transition-colors w-full text-left"
@@ -245,6 +249,28 @@ export function DraftOrderGrid({
                             {isVirtual ? 'V' : 'S'}
                         </span>
                         <span>{field.label}</span>
+                        
+                        {/* Template Info Tooltip */}
+                        {template && (
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div 
+                                            role="button" 
+                                            tabIndex={0}
+                                            onClick={(e) => e.stopPropagation()} 
+                                            className="p-0.5 rounded-full hover:bg-muted text-muted-foreground/70 hover:text-foreground transition-colors"
+                                        >
+                                            <Info className="h-3 w-3" />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[300px] break-all">
+                                        <p className="font-mono text-xs">Template: {template}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        )}
+
                         {/* Show error indicator if any row has validation errors in this column */}
                         {hasErrors && (
                             <TooltipProvider>

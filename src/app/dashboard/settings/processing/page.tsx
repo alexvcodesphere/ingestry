@@ -104,7 +104,7 @@ export default function ProcessingProfilesPage() {
                                 onClick={() => router.push(`/dashboard/settings/profiles/${profile.id}`)}
                                 className={`group relative p-4 rounded-2xl cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
                                     profile.is_default 
-                                        ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 ring-2 ring-inset ring-purple-400/50 shadow-sm' 
+                                        ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' 
                                         : 'bg-card/60 backdrop-blur-md ring-1 ring-inset ring-border/50 hover:ring-2 hover:ring-primary/30 hover:shadow-sm'
                                 }`}
                             >
@@ -138,7 +138,7 @@ export default function ProcessingProfilesPage() {
                                 {/* Header */}
                                 <div className="flex items-center gap-2 mb-2 pr-16">
                                     {profile.is_default && (
-                                        <Star className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                                        <Star className="h-4 w-4 text-primary shrink-0" />
                                     )}
                                     <h4 className="font-semibold truncate">{profile.name}</h4>
                                 </div>

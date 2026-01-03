@@ -9,6 +9,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_SPARK_MODEL, type SparkModel } from "./types";
+import type { FieldConfig } from "./prompt-builder";
 
 // Fast model for intent parsing (minimal latency)
 const INTENT_MODEL = "gemini-2.0-flash";
@@ -37,6 +38,7 @@ export interface SparkOptions {
     catalogGuide?: string;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
     allowQuestions?: boolean;  // Opt-in for question answering mode
+    fields?: FieldConfig[]; // Rich field metadata
 }
 
 /** Result from intent parsing phase */
@@ -155,15 +157,31 @@ Examples:
 /**
  * Build the system prompt for Spark patching
  */
-function buildSparkPrompt(fieldSchema: Record<string, string>, catalogGuide?: string): string {
+function buildSparkPrompt(
+    fieldSchema: Record<string, string>, 
+    catalogGuide?: string,
+    fields?: FieldConfig[]
+): string {
     const schemaDoc = Object.entries(fieldSchema)
         .map(([key, label]) => `- ${key}: ${label}`)
         .join('\n');
     
+    // Build template rules if fields provided
+    let templateRules = "";
+    if (fields) {
+        const templatedFields = fields.filter(f => f.use_template && f.template);
+        if (templatedFields.length > 0) {
+            templateRules = "\n\n## Field Rules & Templates\nThe following fields are computed using strict templates. If the user asks to fix or regenerate these, you MUST follow these patterns:\n";
+            for (const f of templatedFields) {
+                templateRules += `- ${f.key}: MUST be formed as "${f.template}". variables like {brand.code} mean "look up the code for the brand".\n`;
+            }
+        }
+    }
+
     let prompt = `You are Ingestry Spark. Generate precise patches for the records.
 
 ## Fields
-${schemaDoc}
+${schemaDoc}${templateRules}
 
 ## Output Format
 {"status": "success"|"ambiguous"|"no_changes", "patches": [{"id": "<id>", "updates": {"<field>": "<value>"}}], "trigger_regeneration": false, "summary": "description", "clarification_needed": "question if ambiguous"}
@@ -365,7 +383,12 @@ Provide an accurate answer based on the data above.`;
         }
     }
 
-    const systemPrompt = buildSparkPrompt(filteredSchema, options.catalogGuide);
+    // Filter fields metadata if provided
+    const filteredFields = options.fields 
+        ? options.fields.filter(f => fieldsToInclude.includes(f.key))
+        : undefined;
+
+    const systemPrompt = buildSparkPrompt(filteredSchema, options.catalogGuide, filteredFields);
     
     const userMessage = `## Data (${filteredItems.length} records)
 ${JSON.stringify(filteredItems)}
