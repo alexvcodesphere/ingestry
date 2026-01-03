@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, LayoutDashboard, Package, Settings, ChevronDown, FileInput, FileOutput, BookOpen } from "lucide-react";
+import { LogOut, LayoutDashboard, Package, Settings, ChevronDown, FileInput, BookOpen } from "lucide-react";
 
 const mainNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -15,9 +15,8 @@ const mainNavigation = [
 
 const settingsSubItems = [
     { name: "Overview", href: "/dashboard/settings", icon: Settings },
-    { name: "Input Profiles", href: "/dashboard/settings/processing", icon: FileInput },
-    { name: "Output Profiles", href: "/dashboard/settings/output", icon: FileOutput },
-    { name: "Code Lookups", href: "/dashboard/settings/lookups", icon: BookOpen },
+    { name: "Profiles", href: "/dashboard/settings/processing", icon: FileInput },
+    { name: "Lookups", href: "/dashboard/settings/lookups", icon: BookOpen },
 ];
 
 export function Sidebar() {

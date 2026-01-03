@@ -65,10 +65,10 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                 {extractedFields.map((field, index) => (
                     <div
                         key={field.key || index}
-                        className="flex items-center gap-2 p-3 border rounded-xl bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/30 dark:to-transparent ring-1 ring-inset ring-blue-200/50 dark:ring-blue-800/50"
+                        className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30 ring-1 ring-inset ring-border/50"
                     >
                         {/* Source Badge */}
-                        <span className="text-[10px] px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wide whitespace-nowrap">
+                        <span className="text-[10px] px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wide whitespace-nowrap">
                             SRC
                         </span>
                         
@@ -137,7 +137,7 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                     </div>
                 ))}
                 {extractedFields.length === 0 && (
-                    <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl">
+                    <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
                         <FileInput className="h-10 w-10 mx-auto mb-3 opacity-30" />
                         <p className="font-medium">No source fields defined</p>
                         <p className="text-sm mt-1">Add fields to extract from input documents</p>

@@ -260,7 +260,7 @@ export function ExportTab({
 
                     {/* Mapping Validator Warning */}
                     {invalidMappings.length > 0 && (
-                        <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-xl text-sm">
+                        <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
                             <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
                             <div>
                                 <p className="font-medium text-amber-800 dark:text-amber-200">
@@ -389,7 +389,7 @@ export function ExportTab({
                     </div>
                 </div>
             ) : (
-                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl">
+                <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
                     <p className="font-medium">No export configurations</p>
                     <Button variant="outline" className="mt-3" onClick={() => handleAddConfig()}>
                         Create Export Config

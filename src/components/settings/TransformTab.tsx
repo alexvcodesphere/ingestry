@@ -75,7 +75,7 @@ export function TransformTab({
     return (
         <div className="space-y-5">
             {/* Add Computed Field */}
-            <div className="p-4 border-2 border-dashed rounded-xl bg-purple-50/30 dark:bg-purple-950/20">
+            <div className="p-4 border border-dashed rounded-lg bg-muted/30">
                 <div className="flex items-center gap-2 mb-2">
                     <Wand2 className="h-5 w-5 text-purple-500" />
                     <Label className="text-sm font-medium">Create Virtual Field</Label>
@@ -106,7 +106,7 @@ export function TransformTab({
                         {computedFields.map((field) => (
                             <div
                                 key={field.key}
-                                className="p-4 border rounded-xl bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/30 dark:to-transparent ring-1 ring-inset ring-purple-200/50 dark:ring-purple-800/50"
+                                className="p-4 border rounded-lg bg-muted/30 ring-1 ring-inset ring-border/50"
                             >
                                 <div className="flex items-center gap-2 mb-3">
                                     <span className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide">
