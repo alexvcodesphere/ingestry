@@ -77,7 +77,7 @@ export default function ProcessingProfilesPage() {
             />
 
             {/* Profiles Gallery */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {profiles.length === 0 ? (
                     <Card className="col-span-full">
                         <CardContent className="py-12 text-center text-muted-foreground">
@@ -102,10 +102,10 @@ export default function ProcessingProfilesPage() {
                             <div
                                 key={profile.id}
                                 onClick={() => router.push(`/dashboard/settings/profiles/${profile.id}`)}
-                                className={`group relative p-4 rounded-xl cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
+                                className={`group relative p-4 rounded-2xl cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
                                     profile.is_default 
                                         ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 ring-2 ring-inset ring-purple-400/50 shadow-sm' 
-                                        : 'bg-card ring-1 ring-inset ring-border/60 hover:ring-2 hover:ring-primary/30 hover:shadow-sm'
+                                        : 'bg-card/60 backdrop-blur-md ring-1 ring-inset ring-border/50 hover:ring-2 hover:ring-primary/30 hover:shadow-sm'
                                 }`}
                             >
                                 {/* Actions (top-right, hover only) */}
@@ -150,16 +150,16 @@ export default function ProcessingProfilesPage() {
                                 
                                 {/* Stats Row */}
                                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-blue-600 dark:text-blue-400 font-medium">
                                         {extracted} source
                                     </span>
                                     {computed > 0 && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-purple-600 dark:text-purple-400 font-medium">
                                             {computed} virtual
                                         </span>
                                     )}
                                     {exportConfig && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-muted text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground">
                                             → {exportConfig.shop_system}
                                         </span>
                                     )}

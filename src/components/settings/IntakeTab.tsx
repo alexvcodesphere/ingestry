@@ -286,7 +286,7 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                     );
                 })}
                 {extractedFields.length === 0 && (
-                    <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
+                    <div className="text-center py-12 text-muted-foreground border border-dashed border-border/60 rounded-lg">
                         <FileInput className="h-10 w-10 mx-auto mb-3 opacity-30" />
                         <p className="font-medium">No source fields defined</p>
                         <p className="text-sm mt-1">Import from CSV or add fields manually</p>

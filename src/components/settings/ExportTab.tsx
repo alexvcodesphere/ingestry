@@ -106,10 +106,10 @@ function VirtualizedMappings({
                                 }}
                             >
                                 <div
-                                    className={`flex items-center gap-3 p-2.5 border rounded-lg text-sm ${
+                                    className={`flex items-center gap-3 p-2.5 border border-border/60 rounded-lg ring-1 ring-inset text-sm ${
                                         isInvalid 
-                                            ? "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30" 
-                                            : "border-border"
+                                            ? "ring-amber-300/50 dark:ring-amber-700/50 border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30" 
+                                            : "ring-border/50"
                                     }`}
                                 >
                                     {sourceField && (
@@ -463,7 +463,7 @@ export function ExportTab({
                     />
                 </div>
             ) : (
-                <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
+                <div className="text-center py-12 text-muted-foreground border border-dashed border-border/60 rounded-lg">
                     <p className="font-medium">No export configurations</p>
                     <Button variant="outline" className="mt-3" onClick={() => handleAddConfig()}>
                         Create Export Config

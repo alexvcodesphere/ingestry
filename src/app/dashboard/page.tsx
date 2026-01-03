@@ -96,7 +96,7 @@ function StatCard({
     return (
         <Card className="py-4">
             <CardContent className="flex items-center gap-3 p-0 px-4">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconBgClasses[accentColor]}`}>
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ring-border/50 ${iconBgClasses[accentColor]}`}>
                     <span className="text-sm">{icon}</span>
                 </div>
                 <div className="min-w-0">
@@ -190,7 +190,7 @@ export default function DashboardPage() {
             header: "Job ID",
             render: (job) => (
                 <span className="font-mono text-xs text-muted-foreground">
-                    <span className="rounded bg-muted px-1.5 py-0.5">{job.id.slice(0, 8)}</span>
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 ring-1 ring-inset ring-border/50">{job.id.slice(0, 8)}</span>
                 </span>
             ),
         },
@@ -207,7 +207,7 @@ export default function DashboardPage() {
             key: "type",
             header: "Type",
             render: (job) => (
-                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize">
+                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize ring-1 ring-inset ring-border/50">
                     {job.type.replace("_", " ")}
                 </span>
             ),

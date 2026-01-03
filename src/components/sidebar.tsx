@@ -77,7 +77,7 @@ export function Sidebar() {
                             className={cn(
                                 "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                                 isActive
-                                    ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
+                                    ? "bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 font-medium ring-2 ring-inset ring-slate-400/50"
                                     : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                             )}
                         >
@@ -94,7 +94,7 @@ export function Sidebar() {
                         className={cn(
                             "group flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                             isSettingsActive
-                                ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
+                                ? "bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 font-medium ring-2 ring-inset ring-slate-400/50"
                                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                         )}
                     >
@@ -120,7 +120,7 @@ export function Sidebar() {
                                         className={cn(
                                             "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors",
                                             isSubActive
-                                                ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
+                                                ? "bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 font-medium ring-2 ring-inset ring-slate-400/50"
                                                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                                         )}
                                     >

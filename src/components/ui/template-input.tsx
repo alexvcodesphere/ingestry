@@ -241,10 +241,10 @@ export function TemplateInput(props: TemplateInputProps) {
             {showDropdown && (
                 <div
                     ref={dropdownRef}
-                    className="absolute z-50 top-full left-0 mt-1 w-full max-w-xs bg-popover border rounded-lg shadow-lg overflow-hidden"
+                    className="absolute z-50 top-full left-0 mt-1 w-full max-w-xs bg-card/95 backdrop-blur-sm border border-border/60 ring-1 ring-inset ring-border/50 rounded-xl shadow-xl overflow-hidden"
                 >
                     {/* Search Header */}
-                    <div className="p-2 border-b bg-muted/30">
+                    <div className="px-3 py-2.5 border-b border-border/40 bg-muted/40">
                         <div className="relative">
                             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                             <input
@@ -294,7 +294,7 @@ export function TemplateInput(props: TemplateInputProps) {
                     </div>
 
                     {/* Footer Hint */}
-                    <div className="p-2 border-t bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-between">
+                    <div className="px-3 py-2 border-t border-border/40 bg-muted/40 text-[11px] text-muted-foreground flex items-center justify-between">
                         <span>↑↓ navigate • Enter to select</span>
                         <span>:2 = first 2 chars</span>
                     </div>

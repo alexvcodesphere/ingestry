@@ -430,14 +430,17 @@ export function IngestrySpark({
         <AnimatePresence mode="wait">
             {isOpen && (
                 <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: 360 }}
-                    exit={{ width: 0 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: 360, opacity: 1 }}
+                    exit={{ width: 0, opacity: 0 }}
+                    transition={{ 
+                        width: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+                        opacity: { duration: 0.25, delay: 0.15 }
+                    }}
                     className="self-stretch max-h-[800px]"
                     style={{ overflow: 'clip' }}
                 >
-                    <Card className="w-[360px] h-full flex flex-col overflow-hidden border border-border rounded-2xl">
+                    <Card className="w-full min-w-[360px] h-full flex flex-col overflow-hidden">
                         {/* Clean header */}
                         <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between shrink-0">
                             <CardTitle className="text-sm font-medium flex items-center gap-2">

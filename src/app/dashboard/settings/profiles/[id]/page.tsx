@@ -314,13 +314,13 @@ export default function ProfileEditorPage() {
                         </div>
 
                         {/* Step Tabs */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <button
                                 onClick={() => setActiveTab('intake')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
+                                className={`flex-1 flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'intake'
                                         ? 'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 text-blue-700 dark:text-blue-300 ring-2 ring-inset ring-blue-400/50 shadow-sm'
-                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
+                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                             >
                                 <FileText className="h-4 w-4" />
@@ -328,17 +328,17 @@ export default function ProfileEditorPage() {
                                     <div className="font-medium text-sm">Source Fields</div>
                                     <div className="text-xs opacity-70">What is AI looking for?</div>
                                 </div>
-                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'intake' ? 'bg-blue-200/50 dark:bg-blue-800/50' : 'bg-muted'}`}>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'intake' ? 'bg-blue-200/50 dark:bg-blue-800/50' : 'bg-muted/60'}`}>
                                     {extractedCount}
                                 </span>
                             </button>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                            <ChevronRight className="hidden md:block h-4 w-4 text-muted-foreground/40" />
                             <button
                                 onClick={() => setActiveTab('transform')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
+                                className={`flex-1 flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'transform'
                                         ? 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 text-purple-700 dark:text-purple-300 ring-2 ring-inset ring-purple-400/50 shadow-sm'
-                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
+                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                             >
                                 <Sparkles className="h-4 w-4" />
@@ -346,17 +346,17 @@ export default function ProfileEditorPage() {
                                     <div className="font-medium text-sm">Virtual Fields</div>
                                     <div className="text-xs opacity-70">Computed & AI-enriched</div>
                                 </div>
-                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'transform' ? 'bg-purple-200/50 dark:bg-purple-800/50' : 'bg-muted'}`}>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'transform' ? 'bg-purple-200/50 dark:bg-purple-800/50' : 'bg-muted/60'}`}>
                                     {computedCount}
                                 </span>
                             </button>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                            <ChevronRight className="hidden md:block h-4 w-4 text-muted-foreground/40" />
                             <button
                                 onClick={() => setActiveTab('export')}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
+                                className={`flex-1 flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer active:scale-[0.98] ${
                                     activeTab === 'export'
                                         ? 'bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-700 dark:text-slate-300 ring-2 ring-inset ring-slate-400/50 shadow-sm'
-                                        : 'bg-card ring-1 ring-inset ring-border/60 text-muted-foreground hover:text-foreground hover:ring-primary/30'
+                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                             >
                                 <Send className="h-4 w-4" />
@@ -364,7 +364,7 @@ export default function ProfileEditorPage() {
                                     <div className="font-medium text-sm">Export Mapping</div>
                                     <div className="text-xs opacity-70">Map to destinations</div>
                                 </div>
-                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'export' ? 'bg-slate-200/50 dark:bg-slate-700/50' : 'bg-muted'}`}>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${activeTab === 'export' ? 'bg-slate-200/50 dark:bg-slate-700/50' : 'bg-muted/60'}`}>
                                     {mappedCount}
                                 </span>
                             </button>
@@ -423,7 +423,7 @@ export default function ProfileEditorPage() {
                                         setFormData({ ...formData, prompt_additions: e.target.value })
                                     }
                                     placeholder="Optional instructions for AI extraction..."
-                                    className="w-full h-20 rounded-xl border px-3 py-2 text-sm resize-none"
+                                    className="w-full h-20 rounded-lg border border-border/60 ring-1 ring-inset ring-border/50 bg-muted/40 focus:bg-background px-3 py-2 text-sm resize-none"
                                 />
                             </div>
                         </details>
