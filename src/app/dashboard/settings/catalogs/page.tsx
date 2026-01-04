@@ -398,7 +398,7 @@ export default function CatalogsPage() {
                                     </Button>
                                 )}
                                 <Button variant="outline" size="sm" onClick={() => setIsTypeDialogOpen(true)}>
-                                    + Add Lookup
+                                    + Add Catalog
                                 </Button>
                             </TabsActions>
                         </TabsList>
@@ -662,13 +662,13 @@ export default function CatalogsPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Add Lookup Type Dialog */}
+            {/* Add Catalog Type Dialog */}
             <Dialog open={isTypeDialogOpen} onOpenChange={setIsTypeDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Add Custom Lookup Type</DialogTitle>
+                        <DialogTitle>Add Custom Catalog</DialogTitle>
                         <DialogDescription>
-                            Create a new lookup type for custom code mappings
+                            Create a new catalog for custom code mappings
                         </DialogDescription>
                     </DialogHeader>
 

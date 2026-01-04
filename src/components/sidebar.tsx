@@ -6,17 +6,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, LayoutDashboard, Package, Settings, ChevronDown, FileInput, BookOpen } from "lucide-react";
+import { LogOut, LayoutDashboard, Package, Settings, FileInput, BookOpen } from "lucide-react";
 
-const mainNavigation = [
+const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Orders", href: "/dashboard/orders", icon: Package },
-];
-
-const settingsSubItems = [
-    { name: "Overview", href: "/dashboard/settings", icon: Settings },
     { name: "Profiles", href: "/dashboard/settings/processing", icon: FileInput },
     { name: "Catalogs", href: "/dashboard/settings/catalogs", icon: BookOpen },
+    { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -24,14 +21,6 @@ export function Sidebar() {
     const router = useRouter();
     const [userEmail, setUserEmail] = useState<string | null>(null);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
-    const [settingsOpen, setSettingsOpen] = useState(false);
-
-    // Auto-expand settings if we're on a settings page
-    useEffect(() => {
-        if (pathname.startsWith("/dashboard/settings")) {
-            setSettingsOpen(true);
-        }
-    }, [pathname]);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -50,7 +39,6 @@ export function Sidebar() {
     };
 
     const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "?";
-    const isSettingsActive = pathname.startsWith("/dashboard/settings");
 
     return (
         <div className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -66,10 +54,11 @@ export function Sidebar() {
             <nav className="flex-1 space-y-0.5 px-3 py-4">
                 <p className="px-3 py-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">Menu</p>
                 
-                {/* Main nav items */}
-                {mainNavigation.map((item) => {
-                    const isActive = pathname === item.href ||
-                        (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                {navigation.map((item) => {
+                    // Settings should only be active on exact match
+                    const isActive = item.href === "/dashboard/settings"
+                        ? pathname === item.href
+                        : pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
                     return (
                         <Link
                             key={item.name}
@@ -77,7 +66,7 @@ export function Sidebar() {
                             className={cn(
                                 "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                                 isActive
-                                    ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
+                                    ? "bg-primary/10 text-primary font-medium ring-2 ring-inset ring-primary/30"
                                     : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                             )}
                         >
@@ -86,52 +75,6 @@ export function Sidebar() {
                         </Link>
                     );
                 })}
-
-                {/* Settings with dropdown */}
-                <div>
-                    <button
-                        onClick={() => setSettingsOpen(!settingsOpen)}
-                        className={cn(
-                            "group flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                            isSettingsActive
-                                ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
-                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                        )}
-                    >
-                        <div className="flex items-center gap-2.5">
-                            <Settings className="h-4 w-4 shrink-0" />
-                            <span>Settings</span>
-                        </div>
-                        <ChevronDown className={cn(
-                            "h-4 w-4 shrink-0 transition-transform duration-200",
-                            settingsOpen && "rotate-180"
-                        )} />
-                    </button>
-                    
-                    {/* Sub-items */}
-                    {settingsOpen && (
-                        <div className="mt-1 ml-4 space-y-0.5 border-l border-sidebar-border pl-3">
-                            {settingsSubItems.map((item) => {
-                                const isSubActive = pathname === item.href;
-                                return (
-                                    <Link
-                                        key={item.name}
-                                        href={item.href}
-                                        className={cn(
-                                            "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors",
-                                            isSubActive
-                                                ? "bg-primary/10 text-primary font-medium ring-1 ring-inset ring-primary/20"
-                                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                                        )}
-                                    >
-                                        <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                        <span>{item.name}</span>
-                                    </Link>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
             </nav>
 
             {/* Footer */}
