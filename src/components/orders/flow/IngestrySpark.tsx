@@ -32,6 +32,7 @@ interface IngestrySparkProps {
     onOpenChange: (open: boolean) => void;
     onSparkComplete: (result: SparkCompletionResult) => void;
     onProcessingChange: (isProcessing: boolean) => void;
+    onRegeneratingChange?: (ids: Set<string>) => void;
 }
 
 type SparkState = "idle" | "processing" | "success" | "ambiguous" | "error";
@@ -201,6 +202,7 @@ export function IngestrySpark({
     onOpenChange,
     onSparkComplete,
     onProcessingChange,
+    onRegeneratingChange,
 }: IngestrySparkProps) {
     const [instruction, setInstruction] = useState("");
     const [state, setState] = useState<SparkState>("idle");
@@ -313,6 +315,29 @@ export function IngestrySpark({
                     setPendingQuestion(userMessage);
                     addMessage({ type: "system", content: data.summary || "This looks like a question about your data." });
                 }
+                return;
+            }
+
+            // Handle recalculate status
+            if (data.status === "recalculate") {
+                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
+                setState("success");
+                
+                const fieldNames = data.patchedFields?.join(', ') || 'computed fields';
+                addMessage({ 
+                    type: "tool", 
+                    content: `Regenerated ${fieldNames} for ${data.patchedCount} item${data.patchedCount > 1 ? "s" : ""}`
+                });
+                
+                // Visual feedback is handled by the refresh - items already recalculated server-side
+                // Trigger data refresh
+                onSparkComplete({
+                    sessionId: "",
+                    patchedIds: [],
+                    patchedFields: data.patchedFields || [],
+                    triggerRegeneration: true,
+                    summary: data.summary || 'Fields recalculated',
+                });
                 return;
             }
 

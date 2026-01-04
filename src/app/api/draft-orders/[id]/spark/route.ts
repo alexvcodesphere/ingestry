@@ -179,6 +179,58 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             });
         }
 
+        // Handle recalculate response - trigger field regeneration
+        if (result.status === "recalculate") {
+            log(`Recalculate requested for: ${result.fieldKeys?.join(', ') || 'all computed fields'}`);
+            if (result.matchingIds) {
+                log(`Filter applied - regenerating ${result.matchingIds.length} matching items`);
+            }
+            
+            // Use matchingIds if filter was applied, otherwise use selected items or all items
+            const idsToRegenerate = result.matchingIds?.length 
+                ? result.matchingIds 
+                : (lineItemIds || items.map(i => i.id));
+            
+            // Call the line-items regeneration endpoint internally
+            const regenerateBody = {
+                action: 'regenerate_templates' as const,
+                lineItemIds: idsToRegenerate,
+                fieldKeys: result.fieldKeys?.length ? result.fieldKeys : undefined,
+            };
+
+            // Make internal API call to line-items endpoint
+            const baseUrl = request.nextUrl.origin;
+            const regenerateResponse = await fetch(`${baseUrl}/api/draft-orders/${orderId}/line-items`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': request.headers.get('cookie') || '',
+                },
+                body: JSON.stringify(regenerateBody),
+            });
+
+            const regenerateResult = await regenerateResponse.json();
+            
+            if (!regenerateResult.success) {
+                return NextResponse.json({
+                    success: false,
+                    error: regenerateResult.error || 'Failed to regenerate fields',
+                }, { status: 500 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                data: {
+                    status: "recalculate",
+                    patchedCount: regenerateResult.data?.regeneratedCount || 0,
+                    patchedFields: regenerateResult.data?.fieldsUpdated || result.fieldKeys || [],
+                    triggerRegeneration: true,
+                    summary: result.summary,
+                    duration: Date.now() - startTime,
+                },
+            });
+        }
+
         // Handle no changes
         if (result.status === "no_changes" || result.patches.length === 0) {
             return NextResponse.json({

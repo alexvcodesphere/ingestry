@@ -117,9 +117,21 @@ export async function updateLineItem(
     }
 
     // Merge updates
+    const currentData = current.normalized_data as NormalizedProduct & { 
+        _needs_checking?: Array<{ field: string; reason: string }> 
+    };
+    
+    // Clear _needs_checking flags for any edited fields
+    const editedFields = new Set(Object.keys(updates));
+    const updatedNeedsChecking = currentData._needs_checking?.filter(
+        flag => !editedFields.has(flag.field)
+    );
+    
     const normalized = {
-        ...(current.normalized_data as NormalizedProduct),
+        ...currentData,
         ...updates,
+        // Only include _needs_checking if there are remaining flags
+        _needs_checking: updatedNeedsChecking?.length ? updatedNeedsChecking : undefined,
     };
 
     // Update the item

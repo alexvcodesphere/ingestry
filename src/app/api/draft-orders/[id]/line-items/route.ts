@@ -129,9 +129,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         // Ownership check removed: RLS handles tenant isolation
 
         const body = await request.json();
-        const { action, lineItemIds } = body as {
+        const { action, lineItemIds, fieldKeys } = body as {
             action: 'approve' | 'approve_all' | 'unapprove' | 'regenerate_sku' | 'regenerate_templates';
             lineItemIds?: string[];
+            fieldKeys?: string[]; // Optional: specific fields to regenerate (if empty, regenerate all)
         };
 
         // Handle approve all
@@ -210,7 +211,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             }
 
             // Get templated fields from profile (support old and new patterns)
-            const templatedFields = (profile.fields || []).filter(
+            let templatedFields = (profile.fields || []).filter(
                 (f: { use_template?: boolean; template?: string; source?: string; logic_type?: string }) => 
                     // New pattern: computed field with template logic
                     (f.source === 'computed' && f.logic_type === 'template' && f.template) ||
@@ -219,10 +220,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             );
 
             // Get AI enrichment fields from profile
-            const aiEnrichmentFields = (profile.fields || []).filter(
+            let aiEnrichmentFields = (profile.fields || []).filter(
                 (f: { source?: string; logic_type?: string; ai_prompt?: string }) => 
                     f.source === 'computed' && f.logic_type === 'ai_enrichment' && f.ai_prompt
             );
+
+            // SELECTIVE REGENERATION: Filter to specific fields if fieldKeys provided
+            if (fieldKeys && fieldKeys.length > 0) {
+                const fieldKeySet = new Set(fieldKeys);
+                templatedFields = templatedFields.filter(
+                    (f: { key: string }) => fieldKeySet.has(f.key)
+                );
+                aiEnrichmentFields = aiEnrichmentFields.filter(
+                    (f: { key: string }) => fieldKeySet.has(f.key)
+                );
+            }
 
             if (templatedFields.length === 0 && aiEnrichmentFields.length === 0) {
                 return NextResponse.json(

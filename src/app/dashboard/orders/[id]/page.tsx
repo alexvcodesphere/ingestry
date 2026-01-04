@@ -58,6 +58,9 @@ export default function OrderDetailPage() {
     const [sparkSelectedIds, setSparkSelectedIds] = useState<string[]>([]);
     const [sparkProcessing, setSparkProcessing] = useState(false);
     const [sparkOpen, setSparkOpen] = useState(false);
+    
+    // Regeneration visual feedback state
+    const [regeneratingRowIds, setRegeneratingRowIds] = useState<Set<string>>(new Set());
 
     // Fetch order data
     const fetchOrder = useCallback(async () => {
@@ -158,12 +161,19 @@ export default function OrderDetailPage() {
     };
 
     // Handle template field regeneration
-    const handleRegenerateTemplates = async (itemIds: string[]) => {
+    const handleRegenerateTemplates = async (itemIds: string[], fieldKeys?: string[]) => {
+        // Set visual feedback
+        setRegeneratingRowIds(new Set(itemIds));
+        
         try {
             const response = await fetch(`/api/draft-orders/${orderId}/line-items`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "regenerate_templates", lineItemIds: itemIds }),
+                body: JSON.stringify({ 
+                    action: "regenerate_templates", 
+                    lineItemIds: itemIds,
+                    fieldKeys: fieldKeys?.length ? fieldKeys : undefined,
+                }),
             });
 
             const result = await response.json();
@@ -172,6 +182,9 @@ export default function OrderDetailPage() {
             }
         } catch (err) {
             console.error("Failed to regenerate templates:", err);
+        } finally {
+            // Clear visual feedback
+            setRegeneratingRowIds(new Set());
         }
     };
 
@@ -329,6 +342,7 @@ export default function OrderDetailPage() {
                                 isSubmitting={isSubmitting}
                                 onSelectionChange={setSparkSelectedIds}
                                 onSparkToggle={() => setSparkOpen(prev => !prev)}
+                                regeneratingRowIds={regeneratingRowIds}
                                 fieldLabels={
                                     ((order.metadata as { profile_fields?: Array<{ key: string; label: string }> })?.profile_fields || [])
                                         .reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {} as Record<string, string>)
@@ -368,8 +382,11 @@ export default function OrderDetailPage() {
                     onSparkComplete={(result) => {
                         // Always refresh data after Spark operations (including undo)
                         fetchOrder();
+                        // Clear any regenerating state
+                        setRegeneratingRowIds(new Set());
                     }}
                     onProcessingChange={setSparkProcessing}
+                    onRegeneratingChange={setRegeneratingRowIds}
                 />
             </div>
 

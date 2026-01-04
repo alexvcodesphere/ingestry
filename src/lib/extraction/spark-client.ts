@@ -21,7 +21,7 @@ export interface SparkPatch {
     previous_data: Record<string, unknown>;
 }
 
-export type SparkStatus = "success" | "ambiguous" | "no_changes" | "question";
+export type SparkStatus = "success" | "ambiguous" | "no_changes" | "question" | "recalculate";
 
 /** Response from Spark */
 export interface SparkResult {
@@ -31,6 +31,8 @@ export interface SparkResult {
     summary: string;
     clarification_needed?: string;
     answer?: string;  // For question mode responses
+    fieldKeys?: string[]; // For recalculate status - which fields to regenerate
+    matchingIds?: string[]; // For filtered recalculate - which items match the condition
 }
 
 export interface SparkOptions {
@@ -49,6 +51,13 @@ interface IntentResult {
     isAmbiguous: boolean;
     isQuestion: boolean;  // True if user is asking about data, not modifying
     isConfirmation: boolean;  // True if user is confirming a previous suggestion
+    isRecalculate: boolean;  // True if user wants to regenerate computed fields
+    recalculateFields?: string[];  // Specific fields to recalculate (empty = all computed)
+    filterCondition?: {  // Filter condition for targeted recalculation
+        field: string;
+        operator: 'equals' | 'contains' | 'startsWith' | 'endsWith';
+        value: string;
+    };
     clarificationNeeded?: string;
 }
 
@@ -73,29 +82,39 @@ Instruction: "${instruction}"
 
 Return JSON:
 {
-  "targetFields": ["field_key"],     // Fields that will be MODIFIED (empty if question)
+  "targetFields": ["field_key"],     // Fields that will be MODIFIED with specific values
   "contextFields": ["field_key"],    // Fields needed for FILTERING or ANSWERING
   "allRows": true,                   // false if targets specific items
   "isAmbiguous": false,
   "isQuestion": false,               // true if asking ABOUT data (count, list, check)
-  "isConfirmation": false,           // true if user is confirming a previous suggestion (e.g., "yes, do it", "apply that")
+  "isConfirmation": false,           // true if user is confirming a previous suggestion
+  "isRecalculate": false,            // ONLY true if user wants to REGENERATE computed fields FROM THEIR TEMPLATES
+  "recalculateFields": [],           // specific computed field keys to recalculate (empty = all computed fields)
+  "filterCondition": null,           // if targeting specific items, e.g. {"field": "size", "operator": "equals", "value": "42"}
   "clarificationNeeded": null
 }
 
-IMPORTANT:
-- If the user says things like "yes", "do it", "apply that", "change it", "make those changes", these are CONFIRMATIONS of a previous suggestion. Set isConfirmation=true and isQuestion=false.
-- Confirmations mean the user wants to APPLY previously discussed changes, not ask a question.
-- Look at conversation context to infer targetFields if the instruction itself doesn't specify them.
+
+CRITICAL RULES:
+1. MODIFICATIONS (isRecalculate=false): "change X to Y", "set X to Y", "update X to Y", "make X be Y" - these SET a field to a specific value. Put the field in targetFields.
+2. RECALCULATE (isRecalculate=true): ONLY when user ONLY says "recalculate", "regenerate", "recompute" without any value change - this REGENERATES computed fields from their templates.
+3. COMPOUND INSTRUCTIONS: If instruction says "change X... and recalculate Y" or "set X... and then recalculate", this is a MODIFICATION. Put X in targetFields. IGNORE the "and recalculate" part - treat the whole instruction as a modification of X.
+4. Confirmations like "yes", "do it", "apply that" → isConfirmation=true
+5. Questions like "how many", "list", "show" → isQuestion=true
+6. The word "recalculate" at the END of an instruction after "and" does NOT make it a recalculation if there's a modification before it.
 
 Examples:
-- "Set all years to 2025" → targetFields: ["year"], contextFields: [], isQuestion: false, isConfirmation: false
-- "How many items have year 2023?" → targetFields: [], contextFields: ["year"], isQuestion: true, isConfirmation: false
-- "List all the brands" → targetFields: [], contextFields: ["brand"], isQuestion: true, isConfirmation: false
-- "Fix the names" → targetFields: ["product_name"], contextFields: [], isQuestion: false, isConfirmation: false
-- "Yes, change that" → isConfirmation: true, isQuestion: false
-- "Apply those changes" → isConfirmation: true, isQuestion: false
-- "Do it" → isConfirmation: true, isQuestion: false
-- "Yes, update the data" → isConfirmation: true, isQuestion: false`;
+- "Set all years to 2025" → targetFields: ["year"], isRecalculate: false
+- "Change season to winter" → targetFields: ["season"], isRecalculate: false  
+- "Update all brands to Nike" → targetFields: ["brand"], isRecalculate: false
+- "Change all seasons to winter and recalculate SKUs" → targetFields: ["season"], isRecalculate: false
+- "Change the season to summer and recalculate their SKUs" → targetFields: ["season"], isRecalculate: false
+- "Update season and then recalculate the article number" → targetFields: ["season"], isRecalculate: false
+- "Recalculate the SKU" → targetFields: [], isRecalculate: true, recalculateFields: ["sku"]
+- "Regenerate all computed fields" → isRecalculate: true, recalculateFields: []
+- "Refresh SKU for items with size 42" → isRecalculate: true, recalculateFields: ["sku"], filterCondition: {"field": "size", "operator": "equals", "value": "42"}
+- "How many items?" → isQuestion: true
+- "Yes, do it" → isConfirmation: true`;
 
     const startTime = Date.now();
     
@@ -125,12 +144,20 @@ Examples:
         const text = (response.text || "").trim();
         const parsed = JSON.parse(text.replace(/```json\n?|```/g, ''));
         
-        // Validate fields exist in schema
-        const validFields = new Set(Object.keys(fieldSchema));
-        const targetFields = (parsed.targetFields || []).filter((f: string) => validFields.has(f));
-        const contextFields = (parsed.contextFields || []).filter((f: string) => validFields.has(f));
+        // Validate fields exist in schema (case-insensitive matching)
+        const schemaFields = Object.keys(fieldSchema);
+        const fieldLookup = new Map(schemaFields.map(f => [f.toLowerCase(), f]));
+        
+        // Map AI-returned field names to actual schema field names (case-insensitive)
+        const mapToSchemaField = (f: string) => fieldLookup.get(f.toLowerCase());
+        const targetFields = (parsed.targetFields || [])
+            .map(mapToSchemaField)
+            .filter((f: string | undefined): f is string => f !== undefined);
+        const contextFields = (parsed.contextFields || [])
+            .map(mapToSchemaField)
+            .filter((f: string | undefined): f is string => f !== undefined);
 
-        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}, Question: ${parsed.isQuestion || false}, Confirmation: ${parsed.isConfirmation || false}`);
+        console.log(`[Spark Intent] Target: ${targetFields.join(', ') || 'none'}, Context: ${contextFields.join(', ') || 'none'}, Question: ${parsed.isQuestion || false}, Confirmation: ${parsed.isConfirmation || false}, isRecalculate: ${parsed.isRecalculate || false}, recalculateFields: ${JSON.stringify(parsed.recalculateFields)}`);
 
         return {
             targetFields,
@@ -139,6 +166,9 @@ Examples:
             isAmbiguous: parsed.isAmbiguous === true,
             isQuestion: parsed.isQuestion === true,
             isConfirmation: parsed.isConfirmation === true,
+            isRecalculate: parsed.isRecalculate === true,
+            recalculateFields: parsed.recalculateFields,
+            filterCondition: parsed.filterCondition,
             clarificationNeeded: parsed.clarificationNeeded,
         };
     } catch (e) {
@@ -150,6 +180,7 @@ Examples:
             isAmbiguous: false,
             isQuestion: false,
             isConfirmation: false,
+            isRecalculate: false,
         };
     }
 }
@@ -239,17 +270,64 @@ export async function sparkAudit(
     // Phase 1: Parse intent to get target fields (with conversation history for context)
     console.log(`[Spark] Phase 1: Parsing intent for: "${instruction.substring(0, 50)}..."`);
     const intent = await parseIntent(instruction, fieldSchema, ai, options.conversationHistory);
-    console.log(`[Spark] Intent result: isQuestion=${intent.isQuestion}, isConfirmation=${intent.isConfirmation}, targetFields=[${intent.targetFields.join(',')}], contextFields=[${intent.contextFields.join(',')}]`);
+    console.log(`[Spark] Intent result: isQuestion=${intent.isQuestion}, isConfirmation=${intent.isConfirmation}, isRecalculate=${intent.isRecalculate}, targetFields=[${intent.targetFields.join(',')}], contextFields=[${intent.contextFields.join(',')}]`);
 
     // Handle ambiguous intent early (but not if allowQuestions is on - let it try as a question)
     // IMPORTANT: Don't treat confirmations as ambiguous even without target fields
-    if (intent.isAmbiguous && intent.targetFields.length === 0 && !intent.isQuestion && !intent.isConfirmation && !options.allowQuestions) {
+    if (intent.isAmbiguous && intent.targetFields.length === 0 && !intent.isQuestion && !intent.isConfirmation && !intent.isRecalculate && !options.allowQuestions) {
         return {
             status: "ambiguous",
             patches: [],
             trigger_regeneration: false,
             summary: "Could not determine which fields to modify",
             clarification_needed: intent.clarificationNeeded || "Which field would you like to change?",
+        };
+    }
+
+    // RECALCULATE HANDLING:
+    // If user wants to regenerate computed fields, return a recalculate status
+    // The API route will handle the actual regeneration by calling line-items endpoint
+    if (intent.isRecalculate) {
+        console.log(`[Spark] Detected recalculate request for fields: ${intent.recalculateFields?.join(', ') || 'all computed'}`);
+        
+        // Apply filter condition if present to get matching item IDs
+        let matchingIds: string[] | undefined;
+        if (intent.filterCondition && !intent.allRows) {
+            const { field, operator, value } = intent.filterCondition;
+            const normalizedValue = value.toLowerCase().trim();
+            
+            matchingIds = lineItems
+                .filter(item => {
+                    const fieldValue = String(item.data[field] || '').toLowerCase().trim();
+                    switch (operator) {
+                        case 'equals':
+                            return fieldValue === normalizedValue;
+                        case 'contains':
+                            return fieldValue.includes(normalizedValue);
+                        case 'startsWith':
+                            return fieldValue.startsWith(normalizedValue);
+                        case 'endsWith':
+                            return fieldValue.endsWith(normalizedValue);
+                        default:
+                            return fieldValue === normalizedValue;
+                    }
+                })
+                .map(item => item.id);
+            
+            console.log(`[Spark] Filter applied: ${field} ${operator} "${value}" -> ${matchingIds.length} items matched`);
+        }
+        
+        const summary = intent.recalculateFields?.length 
+            ? `Recalculating ${intent.recalculateFields.join(', ')}${matchingIds ? ` for ${matchingIds.length} matching items` : ''}`
+            : `Recalculating all computed fields${matchingIds ? ` for ${matchingIds.length} matching items` : ''}`;
+        
+        return {
+            status: "recalculate",
+            patches: [],
+            trigger_regeneration: true,
+            summary,
+            fieldKeys: intent.recalculateFields,
+            matchingIds,
         };
     }
 

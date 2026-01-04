@@ -61,7 +61,7 @@ interface DraftOrderGridProps {
     onApproveItems: (itemIds: string[]) => Promise<void>;
     onUnapproveItems?: (itemIds: string[]) => Promise<void>;
     onApproveAll: () => Promise<void>;
-    onRegenerateTemplates?: (itemIds: string[]) => Promise<void>;
+    onRegenerateTemplates?: (itemIds: string[], fieldKeys?: string[]) => Promise<void>;
     onBulkUpdate?: (itemIds: string[], updates: Partial<NormalizedProduct>) => Promise<void>;
     onRefreshData?: () => Promise<void>;
     onSelectionChange?: (selectedIds: string[]) => void;
@@ -75,6 +75,8 @@ interface DraftOrderGridProps {
     profileFields?: FieldDefinition[];
     /** Active export config for mapping status */
     activeExportConfig?: ExportConfig;
+    /** Externally controlled regenerating row IDs (for Spark-triggered recalculations) */
+    regeneratingRowIds?: Set<string>;
 }
 
 // Fields that should be treated as numbers
@@ -106,6 +108,7 @@ export function DraftOrderGrid({
     templatedFields = [],
     profileFields = [],
     activeExportConfig,
+    regeneratingRowIds,
 }: DraftOrderGridProps) {
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [updatingRows, setUpdatingRows] = useState<Set<string>>(new Set());
@@ -166,12 +169,12 @@ export function DraftOrderGrid({
         [onUpdateItem]
     );
 
-    const handleRegenerateTemplates = useCallback(async (itemIds: string[]) => {
+    const handleRegenerateTemplates = useCallback(async (itemIds: string[], fieldKeys?: string[]) => {
         if (!onRegenerateTemplates) return;
         setIsRegenerating(true);
         setRegeneratingIds(new Set(itemIds));
         try {
-            await onRegenerateTemplates(itemIds);
+            await onRegenerateTemplates(itemIds, fieldKeys);
         } finally {
             setIsRegenerating(false);
             setRegeneratingIds(new Set());
@@ -534,16 +537,19 @@ export function DraftOrderGrid({
                     </TableHeader>
                     <TableBody>
                         {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    className={
-                                        row.original.status === "approved"
-                                            ? "bg-green-50/50 dark:bg-green-950/20"
-                                            : undefined
-                                    }
-                                >
+                            table.getRowModel().rows.map((row) => {
+                                // Check if this row is being regenerated (internal or external)
+                                const isRowRegenerating = regeneratingIds.has(row.id) || regeneratingRowIds?.has(row.id);
+                                
+                                return (
+                                    <TableRow
+                                        key={row.id}
+                                        data-state={row.getIsSelected() && "selected"}
+                                        className={`
+                                            ${row.original.status === "approved" ? "bg-green-50/50 dark:bg-green-950/20" : ""}
+                                            ${isRowRegenerating ? "animate-pulse bg-primary/5" : ""}
+                                        `.trim()}
+                                    >
                                     {row.getVisibleCells().map((cell) => {
                                         const meta = cell.column.columnDef.meta as { sourceType?: string } | undefined;
                                         const bgClass = meta?.sourceType === 'computed'
@@ -557,8 +563,9 @@ export function DraftOrderGrid({
                                             </TableCell>
                                         );
                                     })}
-                                </TableRow>
-                            ))
+                                    </TableRow>
+                                );
+                            })
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
@@ -594,9 +601,12 @@ export function DraftOrderGrid({
                             : undefined}
                         onRecalculate={
                             selectedIds.length > 0 && onRegenerateTemplates && templatedFields.length > 0
-                                ? () => handleRegenerateTemplates(selectedIds)
+                                ? (fieldKeys) => handleRegenerateTemplates(selectedIds, fieldKeys)
                                 : undefined
                         }
+                        computedFields={editableColumns
+                            .filter(col => col.sourceType === 'computed')
+                            .map(col => ({ key: col.key, label: col.label }))}
                         onQuickSet={onBulkUpdate ? (field, value) => {
                             onBulkUpdate(selectedIds, { [field]: value } as Partial<NormalizedProduct>);
                         } : undefined}

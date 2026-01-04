@@ -15,7 +15,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { X, Check, RefreshCw, Undo2 } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+    DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { X, Check, RefreshCw, Undo2, ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 export interface QuickSetField {
@@ -25,14 +32,20 @@ export interface QuickSetField {
     options?: { value: string; label: string }[];
 }
 
+export interface ComputedField {
+    key: string;
+    label: string;
+}
+
 interface FloatingActionBarProps {
     selectedCount: number;
     onClearSelection: () => void;
     onApprove?: () => void;
     onUnapprove?: () => void;
-    onRecalculate?: () => void;
+    onRecalculate?: (fieldKeys?: string[]) => void;
     onQuickSet?: (field: string, value: string) => void;
     quickSetFields?: QuickSetField[];
+    computedFields?: ComputedField[];
     isLoading?: boolean;
 }
 
@@ -44,6 +57,7 @@ export function FloatingActionBar({
     onRecalculate,
     onQuickSet,
     quickSetFields = [],
+    computedFields = [],
     isLoading = false,
 }: FloatingActionBarProps) {
     const [activeField, setActiveField] = useState<string | null>(null);
@@ -146,18 +160,50 @@ export function FloatingActionBar({
                 {/* Divider before actions */}
                 {(onRecalculate || onApprove || onUnapprove) && <div className="h-6 border-l" />}
 
-                {/* Actions */}
+                {/* Recalculate with dropdown for field selection */}
                 {onRecalculate && (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8"
-                        onClick={onRecalculate}
-                        disabled={isLoading}
-                    >
-                        <RefreshCw className="h-4 w-4 mr-1" />
-                        Recalculate
-                    </Button>
+                    computedFields.length > 1 ? (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8"
+                                    disabled={isLoading}
+                                >
+                                    <RefreshCw className="h-4 w-4 mr-1" />
+                                    Recalculate
+                                    <ChevronDown className="h-3 w-3 ml-1" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => onRecalculate()}>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    All Computed Fields
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {computedFields.map((field) => (
+                                    <DropdownMenuItem 
+                                        key={field.key}
+                                        onClick={() => onRecalculate([field.key])}
+                                    >
+                                        {field.label}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    ) : (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => onRecalculate()}
+                            disabled={isLoading}
+                        >
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                            Recalculate
+                        </Button>
+                    )
                 )}
 
                 {onUnapprove && (
@@ -188,3 +234,4 @@ export function FloatingActionBar({
         </div>
     );
 }
+
