@@ -19,7 +19,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import type { FieldDefinition } from "@/types";
-import { Trash2, FileInput, Plus, Upload, Search } from "lucide-react";
+import { Trash2, FileInput, Plus, Upload, Search, Undo2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const FIELD_TYPES = ["text", "number", "currency", "enum"];
@@ -27,6 +27,7 @@ const FIELD_TYPES = ["text", "number", "currency", "enum"];
 interface IntakeTabProps {
     fields: FieldDefinition[];
     onFieldsChange: (fields: FieldDefinition[]) => void;
+    onSparkSetup?: () => void;
 }
 
 /** Parse CSV header row and detect delimiter */
@@ -52,9 +53,48 @@ function headerToLabel(header: string): string {
         .replace(/\b\w/g, c => c.toUpperCase());
 }
 
-export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
+export function IntakeTab({ fields, onFieldsChange, onSparkSetup }: IntakeTabProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [search, setSearch] = useState("");
+    const [focusNewFieldIndex, setFocusNewFieldIndex] = useState<number | null>(null);
+    
+    // Undo stack (use ref to avoid re-renders, state just for UI update)
+    const undoStackRef = useRef<FieldDefinition[][]>([]);
+    const [canUndo, setCanUndo] = useState(false);
+    const [highlightedIndices, setHighlightedIndices] = useState<Set<number>>(new Set());
+    
+    const saveToHistory = useCallback(() => {
+        undoStackRef.current = [...undoStackRef.current, fields].slice(-20); // Keep last 20
+        setCanUndo(true);
+    }, [fields]);
+    
+    const handleUndo = useCallback(() => {
+        const stack = undoStackRef.current;
+        if (stack.length === 0) return;
+        const previous = stack.pop()!;
+        undoStackRef.current = stack;
+        setCanUndo(stack.length > 0);
+        
+        // Find affected indices (restored or modified fields)
+        const currentExtracted = fields.filter(f => f.source !== 'computed');
+        const previousExtracted = previous.filter(f => f.source !== 'computed');
+        const affected = new Set<number>();
+        
+        previousExtracted.forEach((field, idx) => {
+            const currentField = currentExtracted[idx];
+            // Highlight if field was deleted (restored) or different
+            if (!currentField || JSON.stringify(currentField) !== JSON.stringify(field)) {
+                affected.add(idx);
+            }
+        });
+        
+        setHighlightedIndices(affected);
+        // Clear highlights after animation
+        setTimeout(() => setHighlightedIndices(new Set()), 1500);
+        
+        onFieldsChange(previous);
+    }, [fields, onFieldsChange]);
     
     // Memoize filtered fields to prevent recalculation on every render
     const extractedFields = useMemo(() => 
@@ -72,13 +112,24 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
     );
     
     const handleAddField = () => {
+        saveToHistory();
+        const newIndex = extractedFields.length;
         onFieldsChange([
             ...fields,
             { key: "", label: "", type: "text", required: false, source: "extracted" },
         ]);
+        setFocusNewFieldIndex(newIndex);
+        // Scroll to the new field after DOM updates
+        setTimeout(() => {
+            scrollContainerRef.current?.scrollTo({
+                top: scrollContainerRef.current.scrollHeight,
+                behavior: 'smooth',
+            });
+        }, 50);
     };
 
     const handleRemoveField = (index: number) => {
+        saveToHistory();
         // Find the actual field in the full array using extracted fields index
         const fieldToRemove = extractedFields[index];
         onFieldsChange(fields.filter((f) => f !== fieldToRemove));
@@ -182,6 +233,16 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                         <Plus className="h-4 w-4" />
                         Add Field
                     </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleUndo}
+                        disabled={!canUndo}
+                        className="gap-1.5"
+                        title="Undo last change"
+                    >
+                        <Undo2 className="h-4 w-4" />
+                    </Button>
                 </div>
             </div>
 
@@ -198,13 +259,18 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                 </div>
             )}
 
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+            <div ref={scrollContainerRef} className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                 {filteredFields.map((field) => {
                     const realIndex = extractedFields.indexOf(field);
+                    const isHighlighted = highlightedIndices.has(realIndex);
                     return (
                         <div
                             key={realIndex}
-                            className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30 ring-1 ring-inset ring-border/50"
+                            className={`flex items-center gap-2 p-3 border rounded-lg ring-1 ring-inset transition-all duration-500 ${
+                                isHighlighted 
+                                    ? 'bg-purple-100/50 dark:bg-purple-900/30 ring-purple-400/60 shadow-[0_0_12px_rgba(168,85,247,0.4)]' 
+                                    : 'bg-muted/30 ring-border/50'
+                            }`}
                         >
                             {/* Clickable Source Badge - Toggle S/V */}
                             <button
@@ -221,20 +287,34 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                             </button>
                             
                             <Input
+                                placeholder="Label"
+                                value={field.label}
+                                autoFocus={focusNewFieldIndex === realIndex}
+                                onFocus={() => {
+                                    if (focusNewFieldIndex === realIndex) {
+                                        setFocusNewFieldIndex(null);
+                                    }
+                                }}
+                                onChange={(e) => {
+                                    const newLabel = e.target.value;
+                                    const newSlug = headerToKey(newLabel);
+                                    const currentSlug = headerToKey(field.label);
+                                    // Auto-populate key if empty or matches previous slugified label
+                                    const shouldAutoSlug = !field.key || field.key === currentSlug;
+                                    handleFieldChange(realIndex, {
+                                        label: newLabel,
+                                        ...(shouldAutoSlug ? { key: newSlug } : {}),
+                                    });
+                                }}
+                                className="flex-1 h-8 text-sm"
+                            />
+                            <Input
                                 placeholder="key"
                                 value={field.key}
                                 onChange={(e) =>
                                     handleFieldChange(realIndex, { key: e.target.value })
                                 }
                                 className="w-24 h-8 text-sm"
-                            />
-                            <Input
-                                placeholder="Label"
-                                value={field.label}
-                                onChange={(e) =>
-                                    handleFieldChange(realIndex, { label: e.target.value })
-                                }
-                                className="flex-1 h-8 text-sm"
                             />
                             <Select
                                 value={field.type}
@@ -289,7 +369,18 @@ export function IntakeTab({ fields, onFieldsChange }: IntakeTabProps) {
                     <div className="text-center py-12 text-muted-foreground border border-dashed border-border/60 rounded-lg">
                         <FileInput className="h-10 w-10 mx-auto mb-3 opacity-30" />
                         <p className="font-medium">No source fields defined</p>
-                        <p className="text-sm mt-1">Import from CSV or add fields manually</p>
+                        <p className="text-sm mt-1">Import from CSV, add fields manually, or use AI</p>
+                        {onSparkSetup && (
+                            <Button
+                                variant="outline"
+                                onClick={onSparkSetup}
+                                className="mt-4 gap-1.5 group relative overflow-hidden"
+                            >
+                                <Sparkles className="h-4 w-4 text-purple-500 group-hover:animate-pulse" />
+                                AI Setup
+                                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                            </Button>
+                        )}
                     </div>
                 )}
             </div>

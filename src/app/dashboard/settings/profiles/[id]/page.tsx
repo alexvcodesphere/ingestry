@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,26 @@ import { IntakeTab } from "@/components/settings/IntakeTab";
 import { TransformTab } from "@/components/settings/TransformTab";
 import { ExportTab } from "@/components/settings/ExportTab";
 import { ProfilePreviewTable } from "@/components/settings/ProfilePreviewTable";
-import { FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy, Pencil } from "lucide-react";
+import { FileText, Sparkles, Send, ChevronRight, Save, Loader2, CircleDot, Copy, Pencil, Brain, Search, Wand2, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
+
+const LOADING_ICONS = [Brain, Search, Wand2, CheckCircle2];
+
+function CyclingIcon() {
+    const [iconIndex, setIconIndex] = useState(0);
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setIconIndex((prev) => (prev + 1) % LOADING_ICONS.length);
+        }, 1200);
+        return () => clearInterval(interval);
+    }, []);
+    const Icon = LOADING_ICONS[iconIndex];
+    return (
+        <div className="relative h-12 w-12 flex items-center justify-center">
+            <Icon className="h-12 w-12 text-purple-500 absolute animate-in fade-in zoom-in duration-300" key={iconIndex} />
+        </div>
+    );
+}
 
 interface CatalogOption {
     field_key: string;
@@ -27,15 +46,18 @@ interface CatalogOption {
 export default function ProfileEditorPage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const profileId = params.id as string;
     const isNew = profileId === "new";
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+    const [isSparkLoading, setIsSparkLoading] = useState(false);
     const [catalogOptions, setCatalogOptions] = useState<CatalogOption[]>([]);
     const [activeTab, setActiveTab] = useState("intake");
     const initialFormData = useRef<string>("");
+    const sparkFileInputRef = useRef<HTMLInputElement>(null);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -77,10 +99,24 @@ export default function ProfileEditorPage() {
 
     const fetchProfile = useCallback(async () => {
         if (isNew) {
+            // Check for spark query param (AI-suggested fields)
+            const sparkData = searchParams.get("spark");
+            let sparkFields: FieldDefinition[] = [];
+            
+            if (sparkData) {
+                try {
+                    sparkFields = JSON.parse(decodeURIComponent(sparkData));
+                } catch (e) {
+                    console.error("Failed to parse spark data:", e);
+                }
+            }
+            
             const newData = {
-                name: "New Profile",
-                description: "",
-                fields: [{ key: "", label: "", type: "text" as const, required: false, source: "extracted" as const }],
+                name: sparkFields.length > 0 ? "AI-Suggested Profile" : "New Profile",
+                description: sparkFields.length > 0 ? "Fields suggested by Ingestry Spark" : "",
+                fields: sparkFields.length > 0 
+                    ? sparkFields 
+                    : [{ key: "", label: "", type: "text" as const, required: false, source: "extracted" as const }],
                 prompt_additions: "",
                 sku_template: "",
                 generate_sku: false,
@@ -123,7 +159,7 @@ export default function ProfileEditorPage() {
         setFormData(loadedData);
         initialFormData.current = JSON.stringify(loadedData);
         setIsLoading(false);
-    }, [profileId, isNew, router]);
+    }, [profileId, isNew, router, searchParams]);
 
     const fetchCatalogOptions = useCallback(async () => {
         const supabase = createClient();
@@ -174,6 +210,43 @@ export default function ProfileEditorPage() {
             setFormData({ ...formData, fields: newFields, export_configs: updatedConfigs });
         } else {
             setFormData({ ...formData, fields: newFields });
+        }
+    };
+
+    const handleSparkSetup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsSparkLoading(true);
+        try {
+            const formPayload = new FormData();
+            formPayload.append("file", file);
+
+            const response = await fetch("/api/settings/profiles/suggest", {
+                method: "POST",
+                body: formPayload,
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || "Failed to analyze document");
+            }
+
+            // Update fields with suggested ones
+            setFormData(prev => ({
+                ...prev,
+                fields: result.fields,
+                name: prev.name === "New Profile" ? "AI-Suggested Profile" : prev.name,
+                description: prev.description || "Fields suggested by Ingestry Spark",
+            }));
+            toast.success(`Suggested ${result.fields.length} fields from document`);
+        } catch (error) {
+            console.error("Spark Setup error:", error);
+            toast.error(error instanceof Error ? error.message : "Failed to analyze document");
+        } finally {
+            setIsSparkLoading(false);
+            event.target.value = "";
         }
     };
 
@@ -391,10 +464,20 @@ export default function ProfileEditorPage() {
                         {/* Tab Content */}
                         <div className="pt-2">
                             {activeTab === 'intake' && (
-                                <IntakeTab
-                                    fields={formData.fields}
-                                    onFieldsChange={handleFieldsChange}
-                                />
+                                <>
+                                    <input
+                                        ref={sparkFileInputRef}
+                                        type="file"
+                                        accept=".pdf,image/*"
+                                        onChange={handleSparkSetup}
+                                        className="hidden"
+                                    />
+                                    <IntakeTab
+                                        fields={formData.fields}
+                                        onFieldsChange={handleFieldsChange}
+                                        onSparkSetup={() => sparkFileInputRef.current?.click()}
+                                    />
+                                </>
                             )}
 
                             {activeTab === 'transform' && (
@@ -456,6 +539,20 @@ export default function ProfileEditorPage() {
                     </div>
                 </div>
             </Card>
+
+            {/* AI Setup Loading Overlay */}
+            {isSparkLoading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-card/90 shadow-xl ring-1 ring-border/50">
+                        <CyclingIcon />
+                        <div className="text-center">
+                            <p className="font-medium text-lg">Analyzing document...</p>
+                            <p className="text-sm text-muted-foreground mt-1">AI is identifying extractable fields</p>
+                        </div>
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
