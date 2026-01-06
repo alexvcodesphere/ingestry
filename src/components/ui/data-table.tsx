@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { useIsMobile } from "@/hooks/useMobileNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Table,
@@ -30,6 +31,7 @@ export interface Column<T> {
     key: string;
     header: string;
     className?: string;
+    hiddenOnMobile?: boolean;
     render: (item: T, index: number) => ReactNode;
 }
 
@@ -65,6 +67,10 @@ export function DataTable<T>({
     onPageChange,
     onPageSizeChange,
 }: DataTableProps<T>) {
+    const isMobile = useIsMobile();
+    const visibleColumns = isMobile 
+        ? columns.filter(col => !col.hiddenOnMobile) 
+        : columns;
     const pageSizeOptions = propPageSizeOptions || [10, 25, 50];
     const totalPages = Math.ceil(total / pageSize);
     const start = page * pageSize + 1;
@@ -86,31 +92,33 @@ export function DataTable<T>({
                         {emptyMessage}
                     </div>
                 ) : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="hover:bg-transparent">
-                                {columns.map((col) => (
-                                    <TableHead key={col.key} className={col.className}>
-                                        {col.header}
-                                    </TableHead>
-                                ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {data.map((item, index) => (
-                                <TableRow key={keyExtractor(item)} className="group">
-                                    {columns.map((col) => (
-                                        <TableCell key={col.key} className={col.className}>
-                                            {col.render(item, index)}
-                                        </TableCell>
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                    {visibleColumns.map((col) => (
+                                        <TableHead key={col.key} className={col.className}>
+                                            {col.header}
+                                        </TableHead>
                                     ))}
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {data.map((item, index) => (
+                                    <TableRow key={keyExtractor(item)} className="group">
+                                        {visibleColumns.map((col) => (
+                                            <TableCell key={col.key} className={col.className}>
+                                                {col.render(item, index)}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
                 )}
                 {total > 0 && (
-                    <div className="flex items-center justify-between border-t px-6 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t px-4 py-3 sm:px-6">
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
                             <span>
                                 {total > 0 ? `${start}–${end} of ${total}` : "0 items"}

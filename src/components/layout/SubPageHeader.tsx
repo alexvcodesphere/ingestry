@@ -30,7 +30,8 @@ export function SubPageHeader({
     return (
         <header
             className={cn(
-                "px-6 py-4 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm",
+                "px-4 py-3 flex flex-col gap-3 border-b border-border/60 bg-background/80 backdrop-blur-sm",
+                "sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4 sm:gap-4",
                 className
             )}
         >
@@ -42,7 +43,7 @@ export function SubPageHeader({
                     <ArrowLeft className="h-4 w-4" />
                     {backLabel}
                 </button>
-                <div className="h-6 w-px bg-border/50" />
+                <div className="hidden sm:block h-6 w-px bg-border/50" />
                 <div className="flex items-center gap-3">
                     {children}
                 </div>

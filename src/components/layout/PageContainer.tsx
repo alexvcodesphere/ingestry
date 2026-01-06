@@ -13,7 +13,7 @@ interface PageContainerProps {
 
 export function PageContainer({ children, className }: PageContainerProps) {
     return (
-        <div className={cn("glass-surface rounded-2xl p-6", className)}>
+        <div className={cn("glass-surface rounded-2xl p-4 md:p-6", className)}>
             {children}
         </div>
     );

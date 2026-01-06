@@ -6,7 +6,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { FieldDefinition } from "@/types";
 
-const MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-2.0-flash";
 
 const SYSTEM_PROMPT = `You are an expert at analyzing order confirmation documents (PDFs, invoices, purchase orders).
 Your task is to identify all extractable data fields from the document and suggest a schema.
@@ -39,11 +39,13 @@ export interface SuggestedField {
  * Analyze a document and suggest intake schema fields
  * @param documentBuffer PDF or image buffer
  * @param mimeType MIME type of the document
+ * @param options Optional configuration including model selection
  * @returns Array of suggested field definitions
  */
 export async function suggestProfileFromDocument(
     documentBuffer: Buffer,
-    mimeType: string = "application/pdf"
+    mimeType: string = "application/pdf",
+    options: { model?: string } = {}
 ): Promise<FieldDefinition[]> {
     const apiKey = process.env.GEMINI_API_KEY;
 
@@ -53,12 +55,14 @@ export async function suggestProfileFromDocument(
 
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = documentBuffer.toString("base64");
+    const model = options.model || DEFAULT_MODEL;
 
+    console.log(`[Profile Guesser] Using model: ${model}`);
     console.log(`[Profile Guesser] Analyzing document (${(documentBuffer.length / 1024).toFixed(1)} KB)`);
     const startTime = Date.now();
 
     const response = await ai.models.generateContent({
-        model: MODEL,
+        model,
         contents: [
             {
                 role: "user",

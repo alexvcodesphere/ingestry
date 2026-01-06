@@ -390,9 +390,9 @@ export default function ProfileEditorPage() {
 
             {/* Split Layout Card */}
             <Card className="overflow-hidden min-h-[600px]">
-                <div className="flex h-full">
+                <div className="flex flex-col md:flex-row h-full">
                     {/* Left Pane - Editor (60%) */}
-                    <div className="w-[60%] border-r p-6 space-y-6">
+                    <div className="w-full md:w-[60%] border-b md:border-b-0 md:border-r p-4 md:p-6 space-y-6">
                         {/* Description */}
                         <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">Description</Label>
@@ -531,7 +531,7 @@ export default function ProfileEditorPage() {
                     </div>
 
                     {/* Right Pane - Preview (40%) */}
-                    <div className="w-[40%] bg-gradient-to-br from-muted/20 to-muted/40 p-6">
+                    <div className="w-full md:w-[40%] bg-gradient-to-br from-muted/20 to-muted/40 p-4 md:p-6">
                         <ProfilePreviewTable
                             fields={formData.fields}
                             exportConfig={formData.export_configs[formData.default_export_config_idx]}

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { suggestProfileFromDocument } from "@/lib/extraction/profile-guesser";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
     try {
@@ -32,6 +33,15 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Get tenant's configured vision model
+        const supabase = await createClient();
+        const { data: settings } = await supabase
+            .from("tenant_settings")
+            .select("gemini_model")
+            .single();
+        
+        const model = settings?.gemini_model || undefined;
+
         // Convert file to buffer
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -39,7 +49,7 @@ export async function POST(request: NextRequest) {
         console.log(`[Profile Suggest API] Processing ${file.name} (${file.type})`);
 
         // Get suggested fields from AI
-        const suggestedFields = await suggestProfileFromDocument(buffer, file.type);
+        const suggestedFields = await suggestProfileFromDocument(buffer, file.type, { model });
 
         return NextResponse.json({
             success: true,

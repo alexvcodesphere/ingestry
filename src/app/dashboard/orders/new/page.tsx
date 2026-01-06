@@ -328,7 +328,7 @@ export default function NewOrderPage() {
                             )}
                         </motion.div>
                         {i < 2 && (
-                            <div className="w-16 h-1 mx-1 bg-muted rounded-full overflow-hidden">
+                            <div className="w-8 sm:w-16 h-1 mx-1 bg-muted rounded-full overflow-hidden">
                                 <motion.div
                                     className="h-full bg-primary rounded-full"
                                     initial={{ width: "0%" }}

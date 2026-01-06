@@ -78,8 +78,8 @@ export function FloatingActionBar({
         : null;
 
     return (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-center gap-3 bg-background border rounded-lg shadow-lg px-4 py-3">
+        <div className="fixed bottom-4 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-center gap-2 sm:gap-3 bg-background border rounded-lg shadow-lg px-3 py-2.5 sm:px-4 sm:py-3 overflow-x-auto">
                 {/* Selection count */}
                 <div className="flex items-center gap-2 pr-3 border-r">
                     <span className="font-medium">{selectedCount} selected</span>

@@ -16,7 +16,7 @@ const navigation = [
     { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
     const pathname = usePathname();
     const router = useRouter();
     const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -63,6 +63,7 @@ export function Sidebar() {
                         <Link
                             key={item.name}
                             href={item.href}
+                            onClick={onNavigate}
                             className={cn(
                                 "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                                 isActive

@@ -206,6 +206,7 @@ export default function DashboardPage() {
         {
             key: "type",
             header: "Type",
+            hiddenOnMobile: true,
             render: (job) => (
                 <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium capitalize ring-1 ring-inset ring-border/50">
                     {job.type.replace("_", " ")}
@@ -229,11 +230,13 @@ export default function DashboardPage() {
         {
             key: "user",
             header: "User",
+            hiddenOnMobile: true,
             render: (job) => <UserAvatar user={members[job.user_id]} />,
         },
         {
             key: "duration",
             header: "Duration",
+            hiddenOnMobile: true,
             render: (job) => {
                 const createdAt = new Date(job.created_at);
                 const updatedAt = job.updated_at ? new Date(job.updated_at) : new Date();

@@ -32,7 +32,7 @@ export function PageHeader({
     className,
 }: PageHeaderProps) {
     return (
-        <div className={cn("flex items-start justify-between gap-4 mb-6", className)}>
+        <div className={cn("flex flex-col gap-4 mb-6 sm:flex-row sm:items-start sm:justify-between", className)}>
             <div className="min-w-0 flex-1">
                 {/* Breadcrumbs */}
                 {breadcrumbs && breadcrumbs.length > 0 && (
