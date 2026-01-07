@@ -2,18 +2,18 @@ schemaVersion: v0.2
 prepare:
   steps:
     - name: Update node
-      command: sudo n lts
+      command: sudo n 20
     - name: Install Dependencies
       command: npm install
     - name: Build
-      command: rm -rf .next && NODE_OPTIONS="--max-old-space-size=8192" npm run build -- --webpack
+      command: DEBUG=* npm run build 2>&1 | head -500
 test:
   steps: []
 run:
   service:
     steps:
       - name: Update node
-        command: sudo n lts
+        command: sudo n 20
       - name: Run
         command: npm run start
     plan: 9
