@@ -6,7 +6,7 @@
  * Catalog entries are keyed by field_key and shared across all profiles.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
@@ -34,7 +35,9 @@ import {
     TabsActions,
 } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
-import { Trash2 } from "lucide-react";
+import { Trash2, Upload, Download } from "lucide-react";
+import { parseCSV, findExtraHeaders } from "@/lib/import/csv-parser";
+import { toCSV } from "@/lib/export/csv-serializer";
 import type { CatalogEntry } from "@/types";
 
 // Simple field key info for tabs
@@ -110,6 +113,17 @@ export default function CatalogsPage() {
     } | null>(null);
     const [isTesting, setIsTesting] = useState(false);
     const [showTester, setShowTester] = useState(false);
+
+    // CSV Import/Export state
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importData, setImportData] = useState<{
+        rows: Record<string, string>[];
+        extraHeaders: string[];
+        allHeaders: string[];
+    } | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importMode, setImportMode] = useState<'add' | 'replace'>('add');
 
     // Get unique field_keys from code_lookups
     const fetchFieldKeys = useCallback(async () => {
@@ -337,6 +351,180 @@ export default function CatalogsPage() {
         }
     };
 
+    // Delete a custom column
+    const handleDeleteColumn = async (columnId: string, columnLabel: string) => {
+        if (!confirm(`Delete column "${columnLabel}"? This will remove the column definition, but data in extra_data is preserved.`)) return;
+
+        const supabase = createClient();
+        await supabase.from('catalog_fields').delete().eq('id', columnId);
+        await fetchColumnDefs(activeType);
+    };
+
+    // CSV Export handler
+    const handleExportCSV = () => {
+        if (lookups.length === 0) return;
+
+        // Build export data with all columns
+        const exportData = lookups.map(item => {
+            const row: Record<string, string> = {
+                name: item.name,
+                code: item.code,
+                aliases: item.aliases?.join(', ') || '',
+            };
+            // Add custom columns
+            columnDefs.forEach(col => {
+                row[col.column_key] = String(item.extra_data?.[col.column_key] ?? '');
+            });
+            return row;
+        });
+
+        // Generate CSV with column order
+        const columnOrder = ['name', 'code', 'aliases', ...columnDefs.map(c => c.column_key)];
+        const csvContent = toCSV(exportData, { column_order: columnOrder });
+
+        // Trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${activeType}_catalog.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    // CSV Import file handler
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const content = await file.text();
+        const parsed = parseCSV(content);
+
+        if (parsed.rows.length === 0) {
+            alert('No data found in CSV file');
+            return;
+        }
+
+        // Check for required headers
+        const lowerHeaders = parsed.headers.map(h => h.toLowerCase());
+        if (!lowerHeaders.includes('name')) {
+            alert('CSV must have a "name" column');
+            return;
+        }
+
+        // Get known headers: core fields + custom columns
+        const knownHeaders = ['name', 'code', 'aliases', ...columnDefs.map(c => c.column_key)];
+        const extraHeaders = findExtraHeaders(parsed.headers, knownHeaders);
+
+        if (extraHeaders.length > 0) {
+            // Show confirmation modal
+            setImportData({
+                rows: parsed.rows,
+                extraHeaders,
+                allHeaders: parsed.headers,
+            });
+            setIsImportModalOpen(true);
+        } else {
+            // Direct import
+            await processImport(parsed.rows, parsed.headers);
+        }
+
+        // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // Process CSV import
+    const processImport = async (
+        rows: Record<string, string>[],
+        headers: string[],
+        createColumns: boolean = false
+    ) => {
+        setIsImporting(true);
+        const supabase = createClient();
+
+        try {
+            // Create new columns if requested
+            if (createColumns && importData?.extraHeaders) {
+                for (const header of importData.extraHeaders) {
+                    await supabase.from('catalog_fields').insert({
+                        field_key: activeType,
+                        column_key: header.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                        column_label: header,
+                        column_type: 'text',
+                        is_default: false,
+                    });
+                }
+                await fetchColumnDefs(activeType);
+            }
+
+            // Get existing entries for upsert logic
+            const existingNames = new Set(lookups.map(l => l.name.toLowerCase()));
+            let added = 0, updated = 0;
+
+            for (const row of rows) {
+                // Find the name field (case-insensitive)
+                const nameKey = headers.find(h => h.toLowerCase() === 'name') || 'name';
+                const codeKey = headers.find(h => h.toLowerCase() === 'code') || 'code';
+                const aliasesKey = headers.find(h => h.toLowerCase() === 'aliases') || 'aliases';
+
+                const name = row[nameKey]?.trim();
+                if (!name) continue;
+
+                const code = row[codeKey]?.trim()?.toUpperCase() || '';
+                const aliasesStr = row[aliasesKey] || '';
+                const aliases = aliasesStr
+                    .split(',')
+                    .map((a: string) => a.trim())
+                    .filter((a: string) => a.length > 0);
+
+                // Build extra_data from other columns
+                const extra_data: Record<string, string> = {};
+                for (const header of headers) {
+                    const lh = header.toLowerCase();
+                    if (!['name', 'code', 'aliases'].includes(lh)) {
+                        const colKey = header.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                        if (row[header]) {
+                            extra_data[colKey] = row[header];
+                        }
+                    }
+                }
+
+                if (existingNames.has(name.toLowerCase()) && importMode === 'add') {
+                    // Update existing entry
+                    await supabase
+                        .from('catalog_entries')
+                        .update({ code, aliases, extra_data })
+                        .eq('field_key', activeType)
+                        .ilike('name', name);
+                    updated++;
+                } else {
+                    // Insert new entry
+                    await supabase.from('catalog_entries').insert({
+                        field_key: activeType,
+                        name,
+                        code,
+                        aliases,
+                        extra_data,
+                    });
+                    added++;
+                }
+            }
+
+            alert(`Import complete: ${added} added, ${updated} updated`);
+            await fetchLookups(activeType);
+            await fetchFieldKeys();
+        } catch (error) {
+            console.error('Import failed:', error);
+            alert('Import failed. Check console for details.');
+        } finally {
+            setIsImporting(false);
+            setIsImportModalOpen(false);
+            setImportData(null);
+        }
+    };
+
     // Filter lookups by search
     const filteredLookups = lookups.filter(l =>
         l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -487,6 +675,30 @@ export default function CatalogsPage() {
                                 )}
                             </div>
                             <div className="flex items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    title="Import CSV"
+                                >
+                                    <Upload className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleExportCSV}
+                                    disabled={lookups.length === 0}
+                                    title="Export CSV"
+                                >
+                                    <Download className="h-4 w-4" />
+                                </Button>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".csv"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
                                 <Button variant="outline" size="sm" onClick={() => setIsColumnDialogOpen(true)}>
                                     + Column
                                 </Button>
@@ -515,8 +727,21 @@ export default function CatalogsPage() {
                                                 <TableHead>Aliases</TableHead>
                                                 {columnDefs.map(col => (
                                                     <TableHead key={col.id}>
-                                                        {col.column_label}
-                                                        {col.is_default && <span className="ml-1 text-xs text-muted-foreground">(default)</span>}
+                                                        <div className="flex items-center gap-1">
+                                                            <span>{col.column_label}</span>
+                                                            {col.is_default && <span className="text-xs text-muted-foreground">(default)</span>}
+                                                            {!col.is_default && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-5 w-5 text-muted-foreground hover:text-red-500"
+                                                                    onClick={() => handleDeleteColumn(col.id, col.column_label)}
+                                                                    title="Delete column"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     </TableHead>
                                                 ))}
                                                 <TableHead className="text-right">Actions</TableHead>
@@ -789,6 +1014,73 @@ export default function CatalogsPage() {
                             Add Column
                         </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* CSV Import Confirmation Modal */}
+            <Dialog open={isImportModalOpen} onOpenChange={(open) => {
+                if (!open) {
+                    setIsImportModalOpen(false);
+                    setImportData(null);
+                }
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Extra Columns Found</DialogTitle>
+                        <DialogDescription>
+                            The CSV contains columns not in the current catalog schema.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-sm font-medium mb-2">Extra columns:</p>
+                            <div className="flex flex-wrap gap-2">
+                                {importData?.extraHeaders.map(header => (
+                                    <code key={header} className="bg-muted px-2 py-0.5 rounded text-xs">
+                                        {header}
+                                    </code>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                            <p className="mb-2">You can either:</p>
+                            <ul className="list-disc list-inside space-y-1">
+                                <li><strong>Skip</strong> - Import only known columns</li>
+                                <li><strong>Create Columns</strong> - Add new columns for extra headers</li>
+                            </ul>
+                        </div>
+
+                        <div className="text-sm">
+                            <p className="mb-1">Rows to import: <strong>{importData?.rows.length}</strong></p>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setIsImportModalOpen(false);
+                                setImportData(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            onClick={() => importData && processImport(importData.rows, importData.allHeaders, false)}
+                            disabled={isImporting}
+                        >
+                            {isImporting ? 'Importing...' : 'Skip Extra Columns'}
+                        </Button>
+                        <Button
+                            onClick={() => importData && processImport(importData.rows, importData.allHeaders, true)}
+                            disabled={isImporting}
+                        >
+                            {isImporting ? 'Importing...' : 'Create Columns & Import'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

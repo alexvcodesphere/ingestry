@@ -1,12 +1,15 @@
 "use client";
 
 /**
- * Ingestry Spark Sidebar
- * A conversational AI assistant for data transformations.
- * Renders as a collapsible sidebar card with smooth animations.
+ * Ingestry Spark Sidebar (AI SDK v6)
+ * 
+ * A conversational AI assistant for data transformations using
+ * Vercel AI SDK v6's useChat hook with streaming and tool visualization.
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useChat, type UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -14,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
     Sparkles, Send, Undo2, Brain, Search, Wand2, CheckCircle2, 
-    User, Bot, Wrench, Info, RotateCcw, HelpCircle, X, MessageSquare
+    User, RotateCcw, X, Loader2, 
+    ArrowRight, RefreshCw, HelpCircle
 } from "lucide-react";
 
 export interface SparkCompletionResult {
@@ -23,6 +27,8 @@ export interface SparkCompletionResult {
     patchedFields: string[];
     triggerRegeneration: boolean;
     summary: string;
+    /** Full updated items for optimistic grid updates */
+    items?: Array<{ id: string; data: Record<string, unknown> }>;
 }
 
 interface IngestrySparkProps {
@@ -33,19 +39,8 @@ interface IngestrySparkProps {
     onSparkComplete: (result: SparkCompletionResult) => void;
     onProcessingChange: (isProcessing: boolean) => void;
     onRegeneratingChange?: (ids: Set<string>) => void;
-}
-
-type SparkState = "idle" | "processing" | "success" | "ambiguous" | "error";
-
-interface ChatMessage {
-    id: string;
-    type: "user" | "assistant" | "tool" | "system";
-    content: string;
-    metadata?: {
-        patchedCount?: number;
-        patchedFields?: string[];
-        sessionId?: string;
-    };
+    /** Callback for immediate optimistic updates from tool results */
+    onOptimisticUpdate?: (items: Array<{ id: string; data: Record<string, unknown> }>) => void;
 }
 
 const LOADING_ICONS = [Brain, Search, Wand2, CheckCircle2];
@@ -66,24 +61,359 @@ function LoadingIcon() {
     );
 }
 
+/**
+ * Catalog suggestion card with Accept button
+ */
+function CatalogSuggestionCard({ 
+    suggestion, 
+    callId 
+}: { 
+    suggestion: { catalog_key: string; value: string; suggested_canonical: string; reason?: string };
+    callId: string;
+}) {
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [errorMessage, setErrorMessage] = useState('');
+
+    const handleAccept = async () => {
+        setStatus('loading');
+        setErrorMessage('');
+        
+        try {
+            const res = await fetch('/api/catalogs/alias', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    catalog_key: suggestion.catalog_key,
+                    alias_value: suggestion.value,
+                    canonical_name: suggestion.suggested_canonical,
+                }),
+            });
+            
+            const result = await res.json();
+            
+            if (result.success) {
+                setStatus('success');
+            } else {
+                setStatus('error');
+                setErrorMessage(result.error || 'Failed to add alias');
+            }
+        } catch (error) {
+            setStatus('error');
+            setErrorMessage('Network error');
+        }
+    };
+
+    return (
+        <motion.div
+            key={callId}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className={`rounded-xl border p-3 ring-1 ring-inset ${
+                status === 'success' 
+                    ? 'bg-gradient-to-br from-emerald-50/80 to-green-50/50 dark:from-emerald-950/30 dark:to-green-950/20 ring-emerald-200/50 dark:ring-emerald-800/30'
+                    : status === 'error'
+                    ? 'bg-gradient-to-br from-red-50/80 to-rose-50/50 dark:from-red-950/30 dark:to-rose-950/20 ring-red-200/50 dark:ring-red-800/30'
+                    : 'bg-gradient-to-br from-violet-50/80 to-purple-50/50 dark:from-violet-950/30 dark:to-purple-950/20 ring-violet-200/50 dark:ring-violet-800/30'
+            }`}
+        >
+            <div className="flex items-start gap-2">
+                {status === 'success' ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                ) : (
+                    <Sparkles className={`h-4 w-4 mt-0.5 shrink-0 ${status === 'error' ? 'text-red-500' : 'text-violet-600 dark:text-violet-400'}`} />
+                )}
+                <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${
+                        status === 'success' 
+                            ? 'text-emerald-800 dark:text-emerald-200' 
+                            : status === 'error'
+                            ? 'text-red-800 dark:text-red-200'
+                            : 'text-violet-800 dark:text-violet-200'
+                    }`}>
+                        {status === 'success' ? 'Alias Added' : status === 'error' ? 'Failed to Add' : 'Catalog Suggestion'}
+                    </p>
+                    <p className={`text-xs mt-1 ${
+                        status === 'success' 
+                            ? 'text-emerald-600 dark:text-emerald-400' 
+                            : status === 'error'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-violet-600 dark:text-violet-400'
+                    }`}>
+                        {status === 'error' ? errorMessage : (
+                            <>Add &quot;{suggestion.value}&quot; as alias for &quot;{suggestion.suggested_canonical}&quot;</>
+                        )}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        in {suggestion.catalog_key} catalog
+                    </p>
+                </div>
+                {status === 'idle' && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/30"
+                        onClick={handleAccept}
+                    >
+                        Accept
+                    </Button>
+                )}
+                {status === 'loading' && (
+                    <div className="h-7 px-2.5 flex items-center">
+                        <Loader2 className="h-4 w-4 animate-spin text-violet-500" />
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+}
+
+/**
+ * Render a single message part based on AI SDK v6 format
+ */
+function MessagePart({ 
+    part, 
+    index,
+    onUndo,
+    undoState,
+}: { 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    part: any; 
+    index: number;
+    onUndo?: (sessionId: string) => void;
+    undoState?: { undoing: string | null; undone: Set<string> };
+}) {
+    // Text parts
+    if (part.type === 'text') {
+        return (
+            <div key={index} className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
+                <ReactMarkdown>{part.text}</ReactMarkdown>
+            </div>
+        );
+    }
+    
+    // Tool parts use dynamic type names like 'tool-patch_items'
+    if (part.type?.startsWith('tool-')) {
+        const toolName = part.type.replace('tool-', '');
+        const callId = part.toolCallId;
+        const state = part.state; // 'input-streaming' | 'input-available' | 'output-available' | 'output-error'
+        
+        // patch_items tool
+        if (toolName === 'patch_items') {
+            switch (state) {
+                case 'input-streaming':
+                case 'input-available':
+                    return (
+                        <motion.div 
+                            key={callId}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-xl px-3 py-2 ring-1 ring-inset ring-border/30"
+                        >
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <span>Applying changes...</span>
+                        </motion.div>
+                    );
+                case 'output-available': {
+                    const output = part.output || {};
+                    return (
+                        <motion.div
+                            key={callId}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="rounded-xl border bg-gradient-to-br from-emerald-50/80 to-green-50/50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 ring-1 ring-inset ring-emerald-200/50 dark:ring-emerald-800/30"
+                        >
+                            <div className="flex items-start gap-2">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                                        Updated {output.count} item{output.count !== 1 ? 's' : ''}
+                                    </p>
+                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                        {output.field} <ArrowRight className="inline h-3 w-3 mx-1" /> {String(output.value)}
+                                    </p>
+                                </div>
+                                {output.sessionId && onUndo && undoState && (
+                                    undoState.undone.has(output.sessionId) ? (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <CheckCircle2 className="h-3 w-3" />
+                                            Undone
+                                        </span>
+                                    ) : (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-2 text-xs text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                                            onClick={() => onUndo(output.sessionId)}
+                                            disabled={undoState.undoing === output.sessionId}
+                                        >
+                                            {undoState.undoing === output.sessionId ? (
+                                                <>
+                                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                    Undoing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Undo2 className="h-3 w-3 mr-1" />
+                                                    Undo
+                                                </>
+                                            )}
+                                        </Button>
+                                    )
+                                )}
+                            </div>
+                        </motion.div>
+                    );
+                }
+                case 'output-error':
+                    return (
+                        <div key={callId} className="text-red-500 text-sm">
+                            Error: {part.errorText}
+                        </div>
+                    );
+            }
+        }
+        
+        // recalculate_fields tool
+        if (toolName === 'recalculate_fields') {
+            switch (state) {
+                case 'input-streaming':
+                case 'input-available':
+                    return (
+                        <motion.div 
+                            key={callId}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-xl px-3 py-2 ring-1 ring-inset ring-border/30"
+                        >
+                            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+                            <span>Recalculating fields...</span>
+                        </motion.div>
+                    );
+                case 'output-available': {
+                    const output = part.output || {};
+                    return (
+                        <motion.div
+                            key={callId}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="rounded-xl border bg-gradient-to-br from-blue-50/80 to-indigo-50/50 dark:from-blue-950/30 dark:to-indigo-950/20 p-3 ring-1 ring-inset ring-blue-200/50 dark:ring-blue-800/30"
+                        >
+                            <div className="flex items-center gap-2">
+                                <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                <div>
+                                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                                        Recalculated {output.count} item{output.count !== 1 ? 's' : ''}
+                                    </p>
+                                    {output.fields?.length > 0 && (
+                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                                            Fields: {output.fields.join(', ')}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    );
+                }
+                case 'output-error':
+                    return <div key={callId} className="text-red-500 text-sm">Error: {part.errorText}</div>;
+            }
+        }
+        
+        // query_order_data tool
+        if (toolName === 'query_order_data') {
+            switch (state) {
+                case 'input-streaming':
+                case 'input-available':
+                    return (
+                        <motion.div 
+                            key={callId}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-xl px-3 py-2 ring-1 ring-inset ring-border/30"
+                        >
+                            <Search className="h-4 w-4 animate-pulse text-amber-500" />
+                            <span>Analyzing data...</span>
+                        </motion.div>
+                    );
+                case 'output-available': {
+                    const output = part.output || {};
+                    return (
+                        <motion.div
+                            key={callId}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="rounded-xl border bg-gradient-to-br from-amber-50/80 to-yellow-50/50 dark:from-amber-950/30 dark:to-yellow-950/20 p-3 ring-1 ring-inset ring-amber-200/50 dark:ring-amber-800/30"
+                        >
+                            <div className="flex items-center gap-2">
+                                <HelpCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                <p className="text-sm text-amber-800 dark:text-amber-200">
+                                    {output.summary}
+                                </p>
+                            </div>
+                        </motion.div>
+                    );
+                }
+                case 'output-error':
+                    return <div key={callId} className="text-red-500 text-sm">Error: {part.errorText}</div>;
+            }
+        }
+        
+        // suggest_catalog_alias tool
+        if (toolName === 'suggest_catalog_alias') {
+            switch (state) {
+                case 'input-streaming':
+                case 'input-available':
+                    return (
+                        <motion.div 
+                            key={callId}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 backdrop-blur-sm rounded-xl px-3 py-2 ring-1 ring-inset ring-border/30"
+                        >
+                            <Sparkles className="h-4 w-4 animate-pulse text-violet-500" />
+                            <span>Analyzing catalog values...</span>
+                        </motion.div>
+                    );
+                case 'output-available': {
+                    const output = part.output || {};
+                    const suggestion = output.suggestion || {};
+                    return (
+                        <CatalogSuggestionCard 
+                            key={callId}
+                            callId={callId}
+                            suggestion={suggestion}
+                        />
+                    );
+                }
+                case 'output-error':
+                    return <div key={callId} className="text-red-500 text-sm">Error: {part.errorText}</div>;
+            }
+        }
+        
+        // Generic tool fallback
+        return (
+            <div key={callId} className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
+                Tool: {toolName} ({state})
+            </div>
+        );
+    }
+    
+    return null;
+}
+
+/**
+ * Individual message component with tool visualization
+ */
 function SparkMessage({ 
     message, 
-    onUndo, 
-    canUndo, 
-    isUndoing, 
-    onEnableQuestions 
+    onUndo,
+    undoState,
 }: { 
-    message: ChatMessage; 
-    onUndo?: () => void;
-    canUndo?: boolean;
-    isUndoing?: boolean;
-    onEnableQuestions?: () => void;
+    message: UIMessage; 
+    onUndo?: (sessionId: string) => void;
+    undoState?: { undoing: string | null; undone: Set<string> };
 }) {
-    const isUser = message.type === "user";
-    const isTool = message.type === "tool";
-    const isSystem = message.type === "system";
-    const isQuestionPrompt = isSystem && message.content.includes("question about your data");
-    const isThinking = message.content === "thinking";
+    const isUser = message.role === "user";
     
     return (
         <motion.div
@@ -91,77 +421,39 @@ function SparkMessage({
             animate={{ opacity: 1, y: 0 }}
             className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}
         >
+            {/* Avatar */}
             <div className={`shrink-0 h-7 w-7 rounded-full flex items-center justify-center border ${
-                isUser ? "bg-primary text-primary-foreground border-primary" :
-                isTool ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800" :
-                isQuestionPrompt ? "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800" :
-                isSystem ? "bg-muted text-muted-foreground border-border" :
-                "bg-primary/10 text-primary border-primary/20"
+                isUser 
+                    ? "bg-primary text-primary-foreground border-primary" 
+                    : "bg-primary/10 text-primary border-primary/20"
             }`}>
-                {isUser ? <User className="h-3.5 w-3.5" /> :
-                 isTool ? <Wrench className="h-3.5 w-3.5" /> :
-                 isQuestionPrompt ? <HelpCircle className="h-3.5 w-3.5" /> :
-                 isSystem ? <Info className="h-3.5 w-3.5" /> :
-                 <Sparkles className="h-3.5 w-3.5" />}
+                {isUser ? <User className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
             </div>
             
-            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                isUser ? "bg-gradient-to-br from-primary/20 to-primary/10 text-foreground ring-1 ring-inset ring-primary/30" :
-                isTool ? "bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/50 dark:to-amber-900/30 text-amber-800 dark:text-amber-200 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-700/50" :
-                isQuestionPrompt ? "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 text-blue-800 dark:text-blue-200 ring-1 ring-inset ring-blue-300/50 dark:ring-blue-700/50" :
-                isSystem ? "bg-muted/50 text-muted-foreground text-xs" :
-                "bg-card ring-1 ring-inset ring-border/60"
-            }`}>
-                {isThinking ? (
-                    <div className="flex items-center gap-2">
-                        <LoadingIcon />
-                        <span className="text-muted-foreground">Thinking...</span>
+            {/* Content */}
+            <div className="max-w-[85%] space-y-2">
+                {isUser ? (
+                    // User messages - just render text
+                    <div className="rounded-xl px-3 py-2 text-sm bg-gradient-to-br from-primary/20 to-primary/10 text-foreground ring-1 ring-inset ring-primary/30">
+                        <p className="whitespace-pre-wrap">
+                            {message.parts.map((part, i) => 
+                                part.type === 'text' ? part.text : null
+                            ).join('')}
+                        </p>
                     </div>
-                ) : isUser ? (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
                 ) : (
-                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:my-2">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
-                    </div>
-                )}
-                
-                {isQuestionPrompt && onEnableQuestions && (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 mt-2 text-xs border-blue-300 dark:border-blue-700"
-                        onClick={onEnableQuestions}
-                    >
-                        <HelpCircle className="h-3 w-3 mr-1.5" />
-                        Enable for this session
-                    </Button>
-                )}
-                
-                {isTool && message.metadata?.patchedFields && message.metadata.patchedFields.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                        {message.metadata.patchedFields.map(field => (
-                            <span key={field} className="text-xs bg-amber-200/50 dark:bg-amber-800/30 px-1.5 py-0.5 rounded">
-                                {field}
-                            </span>
+                    // Assistant messages - render all parts
+                    <>
+                        {message.parts.map((part, index) => (
+                            <MessagePart
+                                key={index}
+                                part={part}
+                                index={index}
+                                onUndo={onUndo}
+                                undoState={undoState}
+                            />
                         ))}
-                    </div>
-                )}
-                
-                {isTool && canUndo && onUndo && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 mt-1.5 text-xs"
-                        onClick={onUndo}
-                        disabled={isUndoing}
-                    >
-                        {isUndoing ? (
-                            <div className="h-3 w-3 mr-1.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                            <Undo2 className="h-3 w-3 mr-1.5" />
-                        )}
-                        {isUndoing ? "Undoing..." : "Undo"}
-                    </Button>
+                    </>
                 )}
             </div>
         </motion.div>
@@ -202,252 +494,155 @@ export function IngestrySpark({
     onOpenChange,
     onSparkComplete,
     onProcessingChange,
-    onRegeneratingChange,
+    onOptimisticUpdate,
 }: IngestrySparkProps) {
-    const [instruction, setInstruction] = useState("");
-    const [state, setState] = useState<SparkState>("idle");
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [lastSessionId, setLastSessionId] = useState<string | null>(null);
-    const [undoing, setUndoing] = useState(false);
-    const [allowQuestions, setAllowQuestions] = useState(false);
-    const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+    const [undoingSession, setUndoingSession] = useState<string | null>(null);
+    const [undoneSessions, setUndoneSessions] = useState<Set<string>>(new Set());
+    const [inputValue, setInputValue] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Create transport with dynamic body based on selectedIds
+    const transport = useMemo(() => new DefaultChatTransport({
+        api: `/api/draft-orders/${orderId}/spark`,
+        body: {
+            lineItemIds: selectedIds.length > 0 ? selectedIds : undefined,
+        },
+    }), [orderId, selectedIds]);
+
+    // Use the AI SDK v6 useChat hook
+    const { 
+        messages, 
+        sendMessage,
+        status,
+        setMessages,
+    } = useChat({
+        transport,
+        onFinish: ({ message }) => {
+            // Process tool parts for completion callbacks
+            for (const part of message.parts) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const p = part as any;
+                if (p.type?.startsWith('tool-') && p.state === 'output-available') {
+                    const toolName = p.type.replace('tool-', '');
+                    const output = p.output || {};
+                    
+                    if (toolName === 'patch_items' && output.success) {
+                        setLastSessionId(output.sessionId);
+                        // Optimistic UI update
+                        if (onOptimisticUpdate && output.items?.length > 0) {
+                            onOptimisticUpdate(output.items);
+                        }
+                        onSparkComplete({
+                            sessionId: output.sessionId,
+                            patchedIds: output.items?.map((i: { id: string }) => i.id) || [],
+                            patchedFields: [output.field],
+                            triggerRegeneration: false,
+                            summary: `Updated ${output.count} items`,
+                            items: output.items,
+                        });
+                    }
+                    
+                    if (toolName === 'recalculate_fields' && output.success) {
+                        // Optimistic UI update
+                        if (onOptimisticUpdate && output.items?.length > 0) {
+                            onOptimisticUpdate(output.items);
+                        }
+                        onSparkComplete({
+                            sessionId: '',
+                            patchedIds: output.items?.map((i: { id: string }) => i.id) || [],
+                            patchedFields: output.fields || [],
+                            triggerRegeneration: true,
+                            summary: `Recalculated ${output.count} items`,
+                            items: output.items,
+                        });
+                    }
+                }
+            }
+        },
+        onError: (error: Error) => {
+            console.error('[Spark] Chat error:', error);
+        },
+    });
+
+    const isLoading = status === 'streaming' || status === 'submitted';
+
+    // Update parent processing state
+    useEffect(() => {
+        onProcessingChange(isLoading);
+    }, [isLoading, onProcessingChange]);
+
+    // Auto-scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, [messages]);
 
+    // Focus textarea when opened
     useEffect(() => {
         if (isOpen && textareaRef.current) {
             setTimeout(() => textareaRef.current?.focus(), 200);
         }
     }, [isOpen]);
 
-    useEffect(() => {
-        if (isOpen && selectedIds.length > 0 && messages.length === 0) {
-            setMessages([{
-                id: `system-${Date.now()}`,
-                type: "system",
-                content: `Working with ${selectedIds.length} selected item${selectedIds.length > 1 ? "s" : ""}`
-            }]);
-        }
-    }, [isOpen, selectedIds.length, messages.length]);
-
-    const addMessage = (msg: Omit<ChatMessage, "id">) => {
-        setMessages(prev => [...prev, { ...msg, id: `${msg.type}-${Date.now()}` }]);
-    };
-
-    const handleUndo = async () => {
-        if (!lastSessionId || undoing) return;
-        setUndoing(true);
+    // Handle undo
+    const handleUndo = useCallback(async (sessionId: string) => {
+        if (undoingSession) return;
+        setUndoingSession(sessionId);
+        
         try {
             const res = await fetch(`/api/draft-orders/${orderId}/spark`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: lastSessionId }),
+                body: JSON.stringify({ sessionId }),
             });
+            
             const result = await res.json();
+            
             if (result.success) {
-                addMessage({ type: "system", content: `✓ Reverted ${result.data.revertedCount} changes` });
-                setLastSessionId(null);
-                onSparkComplete({
-                    sessionId: "", patchedIds: [], patchedFields: [],
-                    triggerRegeneration: false, summary: "Reverted",
-                });
-            } else {
-                addMessage({ type: "system", content: "Failed to undo" });
-            }
-        } catch {
-            addMessage({ type: "system", content: "Failed to undo changes" });
-        } finally {
-            setUndoing(false);
-        }
-    };
-
-    const handleSubmit = async () => {
-        if (!instruction.trim() || state === "processing") return;
-
-        const userMessage = instruction.trim();
-        addMessage({ type: "user", content: userMessage });
-        setInstruction("");
-        setState("processing");
-        onProcessingChange(true);
-        
-        const thinkingMsgId = `thinking-${Date.now()}`;
-        setMessages(prev => [...prev, { id: thinkingMsgId, type: "system" as const, content: "thinking" }]);
-
-        const conversationHistory = messages
-            .filter(m => m.type === "user" || m.type === "assistant")
-            .map(m => ({ role: m.type as "user" | "assistant", content: m.content }));
-
-        try {
-            const res = await fetch(`/api/draft-orders/${orderId}/spark`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instruction: userMessage,
-                    lineItemIds: selectedIds.length > 0 ? selectedIds : undefined,
-                    conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
-                    allowQuestions,
-                }),
-            });
-
-            const result = await res.json();
-            if (!res.ok || !result.success) throw new Error(result.error || 'Spark failed');
-
-            const { data } = result;
-
-            if (data.status === "ambiguous") {
-                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-                setState("ambiguous");
-                addMessage({ type: "assistant", content: data.clarification_needed || "I need more details." });
-                return;
-            }
-
-            if (data.status === "question") {
-                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-                setState("success");
-                if (data.answer) {
-                    addMessage({ type: "tool", content: `Analyzed ${data.recordsAnalyzed || "all"} records` });
-                    addMessage({ type: "assistant", content: data.answer });
-                } else {
-                    setPendingQuestion(userMessage);
-                    addMessage({ type: "system", content: data.summary || "This looks like a question about your data." });
+                // Mark session as undone
+                setUndoneSessions(prev => new Set(prev).add(sessionId));
+                
+                // Optimistic update with reverted data
+                if (onOptimisticUpdate && result.data?.items) {
+                    onOptimisticUpdate(result.data.items);
                 }
-                return;
-            }
-
-            // Handle recalculate status
-            if (data.status === "recalculate") {
-                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-                setState("success");
                 
-                const fieldNames = data.patchedFields?.join(', ') || 'computed fields';
-                addMessage({ 
-                    type: "tool", 
-                    content: `Regenerated ${fieldNames} for ${data.patchedCount} item${data.patchedCount > 1 ? "s" : ""}`
-                });
+                setLastSessionId(null);
                 
-                // Visual feedback is handled by the refresh - items already recalculated server-side
-                // Trigger data refresh
                 onSparkComplete({
-                    sessionId: "",
+                    sessionId: '',
                     patchedIds: [],
-                    patchedFields: data.patchedFields || [],
-                    triggerRegeneration: true,
-                    summary: data.summary || 'Fields recalculated',
+                    patchedFields: [],
+                    triggerRegeneration: false,
+                    summary: 'Reverted changes',
+                    items: result.data?.items,
                 });
-                return;
             }
-
-            setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-
-            if (data.status === "no_changes" || data.patchedCount === 0) {
-                setState("success");
-                addMessage({ type: "assistant", content: "No changes needed for your request." });
-                return;
-            }
-
-            addMessage({
-                type: "tool",
-                content: `Updated ${data.patchedCount} item${data.patchedCount > 1 ? "s" : ""}`,
-                metadata: { patchedCount: data.patchedCount, patchedFields: data.patchedFields, sessionId: data.sessionId }
-            });
-            addMessage({ type: "assistant", content: data.summary });
-
-            setState("success");
-            setLastSessionId(data.sessionId);
-            onSparkComplete({
-                sessionId: data.sessionId,
-                patchedIds: data.patchedIds || [],
-                patchedFields: data.patchedFields || [],
-                triggerRegeneration: data.triggerRegeneration || false,
-                summary: data.summary || 'Changes applied',
-            });
-
-        } catch (e) {
-            setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-            setState("error");
-            addMessage({ type: "assistant", content: e instanceof Error ? e.message : 'Something went wrong' });
+        } catch (error) {
+            console.error('[Spark] Undo error:', error);
         } finally {
-            onProcessingChange(false);
+            setUndoingSession(null);
         }
-    };
+    }, [orderId, undoingSession, onOptimisticUpdate, onSparkComplete]);
 
     const handleNewConversation = () => {
         setMessages([]);
         setLastSessionId(null);
-        setState("idle");
-        setAllowQuestions(false);
-        if (selectedIds.length > 0) {
-            setMessages([{
-                id: `system-${Date.now()}`,
-                type: "system",
-                content: `Working with ${selectedIds.length} selected item${selectedIds.length > 1 ? "s" : ""}`
-            }]);
-        }
     };
 
-    const handleEnableQuestions = async () => {
-        setAllowQuestions(true);
-        addMessage({ type: "system", content: "✓ Question mode enabled." });
-        if (pendingQuestion) {
-            // Auto-resend the pending question
-            const questionToResend = pendingQuestion;
-            setPendingQuestion(null);
-            setInstruction(questionToResend);
-            // Give state time to update, then submit
-            setTimeout(() => {
-                setInstruction(questionToResend);
-                // Trigger submit via ref or direct call
-            }, 50);
-            // Direct submit with the question
-            setState("processing");
-            onProcessingChange(true);
-            
-            const thinkingMsgId = `thinking-${Date.now()}`;
-            setMessages(prev => [...prev, { id: thinkingMsgId, type: "system" as const, content: "thinking" }]);
-
-            try {
-                const res = await fetch(`/api/draft-orders/${orderId}/spark`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        instruction: questionToResend,
-                        lineItemIds: selectedIds.length > 0 ? selectedIds : undefined,
-                        allowQuestions: true,
-                    }),
-                });
-
-                const result = await res.json();
-                if (!res.ok || !result.success) throw new Error(result.error || 'Spark failed');
-
-                const { data } = result;
-                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-                
-                if (data.answer) {
-                    addMessage({ type: "tool", content: `Analyzed ${data.recordsAnalyzed || "all"} records` });
-                    addMessage({ type: "assistant", content: data.answer });
-                } else {
-                    addMessage({ type: "assistant", content: data.summary || "No answer found." });
-                }
-                setState("success");
-            } catch (e) {
-                setMessages(prev => prev.filter(m => !m.id.startsWith('thinking-')));
-                setState("error");
-                addMessage({ type: "assistant", content: e instanceof Error ? e.message : 'Something went wrong' });
-            } finally {
-                onProcessingChange(false);
-                setInstruction("");
-            }
-        }
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inputValue.trim() || isLoading) return;
+        
+        sendMessage({ text: inputValue });
+        setInputValue("");
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSubmit();
+            handleSubmit(e as unknown as React.FormEvent);
         }
     };
 
@@ -494,7 +689,7 @@ export function IngestrySpark({
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() => onOpenChange(false)}
-                                    disabled={state === "processing"}
+                                    disabled={isLoading}
                                 >
                                     <X className="h-4 w-4" />
                                 </Button>
@@ -505,61 +700,93 @@ export function IngestrySpark({
                             {/* Messages area */}
                             <div className={`flex-1 p-3 space-y-3 ${messages.length > 0 ? 'overflow-y-auto' : 'overflow-hidden'}`}>
                                 {messages.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-                                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                                            <Sparkles className="h-6 w-6 text-primary" />
+                                    <div className="flex flex-col items-center justify-center h-full py-8 text-center px-4">
+                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                                            <Sparkles className="h-5 w-5 text-primary" />
                                         </div>
-                                        <h4 className="font-medium text-sm mb-1">How can I help?</h4>
-                                        <p className="text-sm text-muted-foreground max-w-[200px]">
+                                        <h4 className="font-medium text-sm mb-0.5">How can I help?</h4>
+                                        <p className="text-xs text-muted-foreground mb-4">
                                             Transform, analyze, or fix your data
                                         </p>
-                                        <div className="mt-4 flex flex-wrap gap-1.5 justify-center max-w-[280px]">
-                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;Set all years to 2025&quot;</span>
-                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;How many colors?&quot;</span>
-                                            <span className="text-xs bg-muted px-2 py-1 rounded-full">&quot;Fix missing SKUs&quot;</span>
+                                        
+                                        {/* Quick actions grid */}
+                                        <div className="w-full max-w-[240px] space-y-2">
+                                            <button
+                                                onClick={() => sendMessage({ text: "Do a sanity check on my data. Check for any values that don't match the catalog and suggest fixes." })}
+                                                disabled={isLoading}
+                                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg bg-muted/50 hover:bg-muted transition-colors text-left ring-1 ring-inset ring-border/30 active:scale-[0.98]"
+                                            >
+                                                <Search className="h-4 w-4 text-primary shrink-0" />
+                                                <span>Sanity check</span>
+                                            </button>
+                                            <button
+                                                onClick={() => sendMessage({ text: "Find any empty or missing required fields in the data" })}
+                                                disabled={isLoading}
+                                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg bg-muted/50 hover:bg-muted transition-colors text-left ring-1 ring-inset ring-border/30 active:scale-[0.98]"
+                                            >
+                                                <HelpCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                                                <span>Find missing values</span>
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (
-                                    messages.map((msg) => (
-                                        <SparkMessage 
-                                            key={msg.id} 
-                                            message={msg}
-                                            onUndo={msg.metadata?.sessionId === lastSessionId ? handleUndo : undefined}
-                                            canUndo={msg.metadata?.sessionId === lastSessionId && !!lastSessionId}
-                                            isUndoing={undoing}
-                                            onEnableQuestions={!allowQuestions ? handleEnableQuestions : undefined}
-                                        />
-                                    ))
+                                    <>
+                                        {messages.map((msg) => (
+                                            <SparkMessage 
+                                                key={msg.id} 
+                                                message={msg}
+                                                onUndo={handleUndo}
+                                                undoState={{ undoing: undoingSession, undone: undoneSessions }}
+                                            />
+                                        ))}
+                                        
+                                        {/* Loading indicator when streaming */}
+                                        {isLoading && messages[messages.length - 1]?.role === 'user' && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 4 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="flex gap-2.5"
+                                            >
+                                                <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center border bg-primary/10 text-primary border-primary/20">
+                                                    <Sparkles className="h-3.5 w-3.5" />
+                                                </div>
+                                                <div className="bg-muted/40 backdrop-blur-sm rounded-xl px-3 py-2 flex items-center gap-2 ring-1 ring-inset ring-border/30">
+                                                    <LoadingIcon />
+                                                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </>
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
 
                             {/* Input area */}
                             <div className="border-t p-3 shrink-0">
-                                <div className="flex items-end gap-2">
+                                <form onSubmit={handleSubmit} className="flex items-end gap-2">
                                     <Textarea
                                         ref={textareaRef}
                                         placeholder="Ask anything..."
-                                        value={instruction}
-                                        onChange={(e) => setInstruction(e.target.value)}
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={handleKeyDown}
-                                        disabled={state === "processing"}
+                                        disabled={isLoading}
                                         className="min-h-[40px] max-h-[100px] flex-1 resize-none text-sm border-0 shadow-none focus-visible:ring-0 focus-visible:bg-transparent p-2 bg-muted/30 rounded-lg"
                                         rows={1}
                                     />
                                     <Button
+                                        type="submit"
                                         size="icon"
-                                        onClick={handleSubmit}
-                                        disabled={!instruction.trim() || state === "processing"}
+                                        disabled={!inputValue.trim() || isLoading}
                                         className="h-9 w-9 shrink-0 rounded-full"
                                     >
-                                        {state === "processing" ? (
+                                        {isLoading ? (
                                             <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                         ) : (
                                             <Send className="h-4 w-4" />
                                         )}
                                     </Button>
-                                </div>
+                                </form>
                             </div>
                             <p className="text-[10px] text-muted-foreground/50 text-center py-2 border-t">Spark can make mistakes. Verify important changes.</p>
                         </CardContent>

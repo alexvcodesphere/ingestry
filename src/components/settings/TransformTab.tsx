@@ -173,8 +173,9 @@ export function TransformTab({
                                     <div className="border rounded-lg bg-muted/30 ring-1 ring-inset ring-border/50">
                                         <CollapsibleTrigger className="flex items-center gap-2 p-3 w-full text-left hover:bg-muted/50 transition-colors group">
                                             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-0 group-data-[state=closed]:-rotate-90" />
-                                            <button
-                                                type="button"
+                                            <span
+                                                role="button"
+                                                tabIndex={0}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleFieldUpdate(field.key, { 
@@ -184,11 +185,22 @@ export function TransformTab({
                                                         ai_prompt: undefined,
                                                     });
                                                 }}
-                                                className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.stopPropagation();
+                                                        handleFieldUpdate(field.key, { 
+                                                            source: 'extracted', 
+                                                            logic_type: undefined,
+                                                            template: undefined,
+                                                            ai_prompt: undefined,
+                                                        });
+                                                    }
+                                                }}
+                                                className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/80 text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors cursor-pointer"
                                                 title="Click to convert to Source field"
                                             >
                                                 V
-                                            </button>
+                                            </span>
                                             <span className="font-medium text-sm">{field.label || field.key}</span>
                                             <span className="text-xs text-muted-foreground font-mono">({field.key})</span>
                                             {field.logic_type === 'ai_enrichment' && (
@@ -202,17 +214,23 @@ export function TransformTab({
                                                 </span>
                                             )}
                                             <div className="flex-1" />
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
+                                            <span
+                                                role="button"
+                                                tabIndex={0}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleRemoveComputedField(field.key);
                                                 }}
-                                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.stopPropagation();
+                                                        handleRemoveComputedField(field.key);
+                                                    }
+                                                }}
+                                                className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-muted cursor-pointer"
                                             >
                                                 <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
+                                            </span>
                                         </CollapsibleTrigger>
                                         
                                         <CollapsibleContent>

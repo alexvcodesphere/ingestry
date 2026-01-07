@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getDraftOrders } from '@/lib/services/draft-order.service';
 import { processOrder } from '@/lib/modules/processing/pipeline';
-import { extractProducts, getPromptForProfile, type VisionModel, type ExtractedProductWithMeta } from '@/lib/extraction';
+import { extractProducts, getPromptForProfile, type VisionModel, type ExtractedProductWithMeta, type ExtractionFieldConfig } from '@/lib/extraction';
 import { evaluateTemplate, loadCodeLookups, loadExtraDataLookups, type TemplateContext } from '@/lib/services/template-engine';
 import { enrichProducts, type EnrichmentField } from '@/lib/services/ai-enrichment';
 import type { DraftOrderStatus, ShopSystem, RawExtractedProduct } from '@/types';

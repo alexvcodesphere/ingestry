@@ -380,13 +380,40 @@ export default function OrderDetailPage() {
                     isOpen={sparkOpen}
                     onOpenChange={setSparkOpen}
                     onSparkComplete={(result) => {
-                        // Always refresh data after Spark operations (including undo)
-                        fetchOrder();
+                        // For operations without items data, refresh from server
+                        if (!result.items || result.items.length === 0) {
+                            fetchOrder();
+                        }
                         // Clear any regenerating state
                         setRegeneratingRowIds(new Set());
                     }}
                     onProcessingChange={setSparkProcessing}
                     onRegeneratingChange={setRegeneratingRowIds}
+                    onOptimisticUpdate={(items) => {
+                        // OPTIMISTIC UPDATE: Immediately update grid without refetch
+                        if (!order?.line_items) return;
+                        
+                        setOrder(prev => {
+                            if (!prev?.line_items) return prev;
+                            
+                            const itemsMap = new Map(items.map(i => [i.id, i.data]));
+                            const updatedLineItems = prev.line_items.map(li => {
+                                const newData = itemsMap.get(li.id);
+                                if (newData) {
+                                    return {
+                                        ...li,
+                                        normalized_data: newData,
+                                    };
+                                }
+                                return li;
+                            });
+                            
+                            return {
+                                ...prev,
+                                line_items: updatedLineItems,
+                            };
+                        });
+                    }}
                 />
             </div>
 

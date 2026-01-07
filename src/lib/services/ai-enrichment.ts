@@ -1,16 +1,16 @@
 /**
- * AI Enrichment Service
+ * AI Enrichment Service (AI SDK v6)
  * Generates values for computed fields using AI based on product data and prompts.
  * 
  * Lightweight design:
  * - Batches multiple fields for efficiency
- * - Uses fast Gemini model
+ * - Uses fast Gemini model via AI SDK
  * - Modular: can be called from template regeneration or standalone
  */
 
-import { GoogleGenAI } from "@google/genai";
-
-const AI_MODEL = "gemini-2.0-flash";
+import { generateObject } from 'ai';
+import { z } from 'zod';
+import { intentModel } from '@/lib/extraction/unified-ai-client';
 
 /** Field to enrich with AI */
 export interface EnrichmentField {
@@ -37,19 +37,19 @@ export interface EnrichmentResult {
  * 
  * @param fields - Fields to enrich (with ai_prompt)
  * @param products - Products to enrich
- * @param apiKey - Gemini API key
+ * @param _apiKey - Deprecated, uses env var now. Kept for API compatibility.
  * @returns Enrichment results for each product
  */
 export async function enrichProducts(
     fields: EnrichmentField[],
     products: ProductData[],
-    apiKey: string
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _apiKey?: string
 ): Promise<EnrichmentResult[]> {
     if (fields.length === 0 || products.length === 0) {
         return [];
     }
 
-    const ai = new GoogleGenAI({ apiKey });
     const results: EnrichmentResult[] = [];
 
     // Process in batches to avoid rate limits
@@ -58,7 +58,7 @@ export async function enrichProducts(
     for (let i = 0; i < products.length; i += BATCH_SIZE) {
         const batch = products.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
-            batch.map(product => enrichSingleProduct(fields, product, ai))
+            batch.map(product => enrichSingleProduct(fields, product))
         );
         results.push(...batchResults);
     }
@@ -67,12 +67,24 @@ export async function enrichProducts(
 }
 
 /**
+ * Build dynamic Zod schema for enrichment fields
+ */
+function buildEnrichmentSchema(fields: EnrichmentField[]) {
+    const fieldSchemas: Record<string, z.ZodTypeAny> = {};
+    
+    for (const field of fields) {
+        fieldSchemas[field.key] = z.string().describe(field.ai_prompt);
+    }
+    
+    return z.object(fieldSchemas);
+}
+
+/**
  * Enrich a single product with AI-generated values
  */
 async function enrichSingleProduct(
     fields: EnrichmentField[],
-    product: ProductData,
-    ai: GoogleGenAI
+    product: ProductData
 ): Promise<EnrichmentResult> {
     const enrichments: Record<string, string> = {};
 
@@ -82,67 +94,38 @@ async function enrichSingleProduct(
         .map(([k, v]) => `${k}: ${v}`)
         .join('\n');
 
-    // Build prompts for all fields
-    const fieldPrompts = fields.map(f => ({
-        key: f.key,
-        prompt: f.ai_prompt,
-        fallback: f.fallback || '',
-    }));
-
-    // Single AI call for all fields (more efficient)
     const systemPrompt = `You are a product data enrichment assistant. Generate values for the requested fields based on the product context.
 
 ## Product Data
 ${productContext}
 
 ## Fields to Generate
-${fieldPrompts.map(f => `- ${f.key}: ${f.prompt}`).join('\n')}
+${fields.map(f => `- ${f.key}: ${f.ai_prompt}`).join('\n')}
 
 ## Instructions
 1. Generate a value for each field based on its prompt and the product data
 2. Be concise and accurate
-3. If you cannot generate a value, use an empty string
-
-## Output Format
-Return a JSON object with each field key and its generated value:
-{
-${fieldPrompts.map(f => `  "${f.key}": "..."`).join(',\n')}
-}
-
-Return ONLY the JSON object, no markdown or explanation.`;
+3. If you cannot generate a value, use an empty string`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: AI_MODEL,
-            contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
-            config: {
-                responseModalities: ['TEXT'],
-                temperature: 0.3,
-                maxOutputTokens: 500,
-            },
+        const schema = buildEnrichmentSchema(fields);
+        
+        const result = await generateObject({
+            model: intentModel,
+            schema,
+            system: systemPrompt,
+            messages: [
+                {
+                    role: 'user',
+                    content: 'Generate the field values based on the product data.',
+                },
+            ],
         });
 
-        const text = response.text?.trim() || '';
-        
-        // Parse JSON response
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
-                const parsed = JSON.parse(jsonMatch[0]) as Record<string, string>;
-                for (const field of fields) {
-                    enrichments[field.key] = parsed[field.key] || field.fallback || '';
-                }
-            } catch {
-                // JSON parse failed, use fallbacks
-                for (const field of fields) {
-                    enrichments[field.key] = field.fallback || '';
-                }
-            }
-        } else {
-            // No JSON found, use fallbacks
-            for (const field of fields) {
-                enrichments[field.key] = field.fallback || '';
-            }
+        // Extract enrichments from result
+        for (const field of fields) {
+            const value = (result.object as Record<string, string>)[field.key];
+            enrichments[field.key] = value || field.fallback || '';
         }
     } catch (error) {
         console.error('[AI Enrichment] Error:', error);
@@ -164,16 +147,15 @@ Return ONLY the JSON object, no markdown or explanation.`;
 export async function enrichSingleField(
     field: EnrichmentField,
     productData: Record<string, unknown>,
-    apiKey: string
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _apiKey?: string
 ): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey });
-    
     const productContext = Object.entries(productData)
         .filter(([, v]) => v !== null && v !== undefined && v !== '')
         .map(([k, v]) => `${k}: ${v}`)
         .join('\n');
 
-    const prompt = `Based on this product data:
+    const systemPrompt = `Based on this product data:
 ${productContext}
 
 ${field.ai_prompt}
@@ -181,18 +163,23 @@ ${field.ai_prompt}
 Respond with ONLY the generated value, no explanation.`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: AI_MODEL,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-                responseModalities: ['TEXT'],
-                temperature: 0.3,
-                maxOutputTokens: 200,
-            },
+        const schema = z.object({
+            value: z.string().describe(field.ai_prompt),
+        });
+        
+        const result = await generateObject({
+            model: intentModel,
+            schema,
+            system: systemPrompt,
+            messages: [
+                {
+                    role: 'user',
+                    content: 'Generate the value.',
+                },
+            ],
         });
 
-        const text = response.text?.trim() || '';
-        return text || field.fallback || '';
+        return result.object.value || field.fallback || '';
     } catch (error) {
         console.error('[AI Enrichment] Single field error:', error);
         return field.fallback || '';
