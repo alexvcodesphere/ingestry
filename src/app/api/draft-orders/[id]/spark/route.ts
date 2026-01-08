@@ -27,6 +27,7 @@ import {
 import { getDraftOrder } from '@/lib/services/draft-order.service';
 import { getCatalogMatchGuide } from '@/lib/services/catalog-reconciler';
 import { parseFieldValue } from '@/lib/modules/processing/normalizer';
+import { regenerateTemplatesForLineItems } from '@/lib/services/regenerate-templates';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -333,24 +334,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                         
                         const targetIds = item_ids?.length ? item_ids : allItemIds;
                         
-                        // Call the line-items regeneration endpoint internally
-                        const regenerateBody = {
-                            action: 'regenerate_templates' as const,
-                            lineItemIds: targetIds,
-                            fieldKeys: field_keys?.length ? field_keys : undefined,
-                        };
-                        
-                        const baseUrl = request.nextUrl.origin;
-                        const regenerateResponse = await fetch(`${baseUrl}/api/draft-orders/${orderId}/line-items`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Cookie': request.headers.get('cookie') || '',
-                            },
-                            body: JSON.stringify(regenerateBody),
-                        });
-                        
-                        const regenerateResult = await regenerateResponse.json();
+                        // Call the regeneration service directly (avoids internal fetch issues on Codesphere)
+                        const regenerateResult = await regenerateTemplatesForLineItems(
+                            orderId,
+                            targetIds,
+                            field_keys?.length ? field_keys : undefined
+                        );
                         
                         if (!regenerateResult.success) {
                             return {
@@ -361,16 +350,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                             };
                         }
                         
-                        // Fetch updated items for UI
-                        const { data: refreshedItems } = await supabase
-                            .from('draft_line_items')
-                            .select('id, normalized_data')
-                            .in('id', targetIds);
-                        
-                        const updatedItems = (refreshedItems || []).map(i => ({
-                            id: i.id,
-                            data: i.normalized_data as Record<string, unknown>,
-                        }));
+                        // Use items from the regeneration result if available
+                        const updatedItems = regenerateResult.items || [];
                         
                         // Update local map
                         for (const item of updatedItems) {
@@ -382,7 +363,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                         return {
                             success: true,
                             count: updatedItems.length,
-                            fields: regenerateResult.data?.fieldsUpdated || field_keys || [],
+                            fields: regenerateResult.fieldsUpdated || field_keys || [],
                             items: updatedItems,
                         };
                     },
